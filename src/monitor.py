@@ -28,6 +28,8 @@ class Monitor:
         self._sensor_manager = sensor_manager
         self._evaluator = ThresholdEvaluator()
         self._start_time: datetime | None = None
+        self._last_readings: dict[str, tuple[float, datetime]] = {}
+        self._roc_alerted: dict[str, datetime] = {}
 
     def start(self) -> None:
         """Begin the monitoring loop. Blocks until stopped."""
@@ -101,6 +103,9 @@ class Monitor:
         log_temperature_csv(reading.sensor_name, reading.temperature_c)
         record_reading(reading.sensor_name, reading.temperature_c)
 
+        # Rate-of-change check
+        self._check_rate_of_change(reading)
+
         # Evaluate thresholds
         new_level, previous_level = self._evaluator.evaluate(
             reading.sensor_name, reading.temperature_c
@@ -157,3 +162,35 @@ class Monitor:
     def get_latest_readings(self) -> list[SensorReading]:
         """Get a fresh set of readings from all sensors (for dashboard/CLI)."""
         return self._sensor_manager.read_all()
+
+    def _check_rate_of_change(self, reading: SensorReading) -> None:
+        """Alert if temperature is rising faster than the configured threshold."""
+        if config.rate_of_change_threshold <= 0:
+            return
+
+        now = datetime.now(timezone.utc)
+        sensor = reading.sensor_name
+
+        if sensor in self._last_readings:
+            prev_temp, prev_time = self._last_readings[sensor]
+            elapsed_minutes = (now - prev_time).total_seconds() / 60.0
+
+            if elapsed_minutes > 0:
+                rate = (reading.temperature_c - prev_temp) / elapsed_minutes
+
+                if rate >= config.rate_of_change_threshold:
+                    # Respect cooldown
+                    last_roc = self._roc_alerted.get(sensor)
+                    if last_roc is None or (now - last_roc).total_seconds() >= config.alert_cooldown:
+                        logger.warning(
+                            "RATE-OF-CHANGE: %s rising at %.1f C/min (threshold: %.1f C/min)",
+                            sensor, rate, config.rate_of_change_threshold,
+                        )
+                        recipients = self._evaluator.get_recipients(AlertLevel.WARNING)
+                        if recipients:
+                            dispatch_alert(
+                                AlertLevel.WARNING, sensor, reading.temperature_c, recipients
+                            )
+                        self._roc_alerted[sensor] = now
+
+        self._last_readings[sensor] = (reading.temperature_c, now)
