@@ -1,0 +1,111 @@
+"""Threshold evaluation with hysteresis for alert state management."""
+
+from enum import Enum, auto
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+from src.config import config
+
+
+class AlertLevel(Enum):
+    """Alert severity levels in ascending order."""
+
+    NORMAL = auto()
+    WARNING = auto()
+    CRITICAL = auto()
+    EMERGENCY = auto()
+
+
+@dataclass
+class AlertState:
+    """Tracks the current alert state for a single sensor."""
+
+    sensor_name: str
+    current_level: AlertLevel = AlertLevel.NORMAL
+    last_alert_times: dict[AlertLevel, datetime] = field(default_factory=dict)
+
+    def can_send_alert(self, level: AlertLevel) -> bool:
+        """Check whether cooldown has elapsed for a given alert level."""
+        last_time = self.last_alert_times.get(level)
+        if last_time is None:
+            return True
+        elapsed = (datetime.now(timezone.utc) - last_time).total_seconds()
+        return elapsed >= config.alert_cooldown
+
+    def record_alert(self, level: AlertLevel) -> None:
+        """Record that an alert was sent at the current time."""
+        self.last_alert_times[level] = datetime.now(timezone.utc)
+
+
+class ThresholdEvaluator:
+    """Evaluates temperature readings against configured thresholds.
+
+    Implements hysteresis to prevent alert flapping when temperature
+    hovers around a threshold boundary.
+    """
+
+    def __init__(self) -> None:
+        self._states: dict[str, AlertState] = {}
+
+    def _get_state(self, sensor_name: str) -> AlertState:
+        if sensor_name not in self._states:
+            self._states[sensor_name] = AlertState(sensor_name=sensor_name)
+        return self._states[sensor_name]
+
+    def evaluate(self, sensor_name: str, temperature: float) -> tuple[AlertLevel, AlertLevel]:
+        """Evaluate a temperature reading and return (new_level, previous_level).
+
+        The new level accounts for hysteresis: a sensor must drop below
+        (threshold - hysteresis) before the level is cleared downwards.
+        """
+        state = self._get_state(sensor_name)
+        previous_level = state.current_level
+        new_level = self._compute_level(temperature, previous_level)
+        state.current_level = new_level
+        return new_level, previous_level
+
+    def _compute_level(self, temp: float, current: AlertLevel) -> AlertLevel:
+        """Determine the alert level with hysteresis applied."""
+        hysteresis = config.temp_hysteresis
+
+        # Escalation (no hysteresis needed going up)
+        if temp >= config.temp_emergency:
+            return AlertLevel.EMERGENCY
+        if temp >= config.temp_critical:
+            return AlertLevel.CRITICAL
+        if temp >= config.temp_warning:
+            return AlertLevel.WARNING
+
+        # De-escalation with hysteresis
+        if current == AlertLevel.EMERGENCY:
+            if temp < config.temp_emergency - hysteresis:
+                return self._compute_level(temp, AlertLevel.CRITICAL)
+            return AlertLevel.EMERGENCY
+
+        if current == AlertLevel.CRITICAL:
+            if temp < config.temp_critical - hysteresis:
+                return self._compute_level(temp, AlertLevel.WARNING)
+            return AlertLevel.CRITICAL
+
+        if current == AlertLevel.WARNING:
+            if temp < config.temp_warning - hysteresis:
+                return AlertLevel.NORMAL
+            return AlertLevel.WARNING
+
+        return AlertLevel.NORMAL
+
+    def get_state(self, sensor_name: str) -> AlertState:
+        """Retrieve the current alert state for a sensor."""
+        return self._get_state(sensor_name)
+
+    def get_recipients(self, level: AlertLevel) -> list[str]:
+        """Return the configured recipient list for a given alert level."""
+        match level:
+            case AlertLevel.WARNING:
+                return config.recipients_warning
+            case AlertLevel.CRITICAL:
+                return config.recipients_critical
+            case AlertLevel.EMERGENCY:
+                return config.recipients_emergency
+            case _:
+                return []
