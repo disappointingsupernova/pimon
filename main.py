@@ -33,6 +33,11 @@ def _cmd_start(args: argparse.Namespace) -> None:
         print("\nFix these issues in your .env file before starting.")
         sys.exit(1)
 
+    # Initialise database tables
+    if config.database_enabled:
+        from src.database.models import init_db
+        init_db()
+
     # Warn if systemd service is not enabled for auto-start
     _check_service_enabled()
 

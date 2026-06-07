@@ -78,6 +78,8 @@ def index():
 @app.route("/api/current")
 def api_current():
     """Return current readings from all sensors."""
+    if not config.endpoint_api_enabled:
+        return Response("Endpoint disabled.", 404)
     if _sensor_manager is None:
         return jsonify({"error": "Sensor manager not initialised"}), 500
 
@@ -103,12 +105,16 @@ def api_current():
 @app.route("/api/history")
 def api_history():
     """Return recent in-memory readings for charting."""
+    if not config.endpoint_api_enabled:
+        return Response("Endpoint disabled.", 404)
     return jsonify(_recent_readings)
 
 
 @app.route("/api/health")
 def api_health():
     """Return system health status for external monitoring."""
+    if not config.endpoint_health_enabled:
+        return Response("Endpoint disabled.", 404)
     from src.sensors.system_metrics import collect_metrics
 
     uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
@@ -153,6 +159,8 @@ def api_health():
 @app.route("/api/history/csv")
 def api_history_csv():
     """Return the last 500 entries from recent CSV logs."""
+    if not config.endpoint_api_enabled:
+        return Response("Endpoint disabled.", 404)
     entries = []
     for days_ago in range(2):
         day = date.today() - timedelta(days=days_ago)
@@ -169,6 +177,8 @@ def api_history_csv():
 @app.route("/metrics")
 def prometheus_metrics():
     """Expose metrics in Prometheus text format."""
+    if not config.endpoint_metrics_enabled:
+        return Response("Endpoint disabled.", 404)
     from src.sensors.system_metrics import collect_metrics
 
     lines = []

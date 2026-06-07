@@ -58,6 +58,11 @@ def dispatch_alert(
     if config.mqtt_enabled:
         publish_alert(sensor_name, level.name, temperature)
 
+    # Persist alert event to database
+    if config.database_enabled:
+        from src.database.repository import store_alert
+        store_alert(sensor_name, level.name, temperature)
+
 
 def dispatch_recovery(
     sensor_name: str,

@@ -93,6 +93,16 @@ class Config:
         self.dashboard_username: str = os.getenv("DASHBOARD_USERNAME", "admin")
         self.dashboard_password: str = os.getenv("DASHBOARD_PASSWORD", "")
 
+        # Endpoint toggles (individually enable/disable dashboard routes)
+        self.endpoint_api_enabled: bool = _bool(os.getenv("ENDPOINT_API_ENABLED", "true"))
+        self.endpoint_health_enabled: bool = _bool(os.getenv("ENDPOINT_HEALTH_ENABLED", "true"))
+        self.endpoint_metrics_enabled: bool = _bool(os.getenv("ENDPOINT_METRICS_ENABLED", "true"))
+
+        # Database
+        _default_db = "sqlite:///" + str(Path(__file__).resolve().parent.parent / "data" / "pi_temp_alerter.db")
+        self.database_url: str = os.getenv("DATABASE_URL", _default_db)
+        self.database_enabled: bool = _bool(os.getenv("DATABASE_ENABLED", "true"))
+
         # Notifications
         self.webhook_enabled: bool = _bool(os.getenv("WEBHOOK_ENABLED", "false"))
         self.webhook_url: str = os.getenv("WEBHOOK_URL", "")
