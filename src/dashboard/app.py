@@ -238,6 +238,14 @@ def start_dashboard() -> Thread | None:
     if not config.dashboard_enabled:
         return None
 
+    # Security warning if exposed to the network without authentication
+    if config.dashboard_host in ("0.0.0.0", "") and not config.dashboard_auth_enabled:
+        logger.warning(
+            "Dashboard is binding to all interfaces (0.0.0.0) with authentication "
+            "disabled. Anyone on the network can access sensor data and system "
+            "metrics. Set DASHBOARD_AUTH_ENABLED=true or bind to 127.0.0.1."
+        )
+
     thread = Thread(
         target=lambda: app.run(
             host=config.dashboard_host,
