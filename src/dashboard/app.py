@@ -166,6 +166,48 @@ def api_history_csv():
     return jsonify({"entries": entries[-500:]})
 
 
+@app.route("/metrics")
+def prometheus_metrics():
+    """Expose metrics in Prometheus text format."""
+    from src.sensors.system_metrics import collect_metrics
+
+    lines = []
+    lines.append("# HELP pi_temp_alerter_uptime_seconds Uptime in seconds")
+    lines.append("# TYPE pi_temp_alerter_uptime_seconds gauge")
+    uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
+    lines.append(f"pi_temp_alerter_uptime_seconds {uptime:.1f}")
+
+    if _sensor_manager:
+        lines.append("# HELP pi_temp_alerter_temperature_celsius Current temperature")
+        lines.append("# TYPE pi_temp_alerter_temperature_celsius gauge")
+        for sensor in _sensor_manager.sensors:
+            reading = sensor.read()
+            if reading.available:
+                lines.append(
+                    f'pi_temp_alerter_temperature_celsius{{sensor="{reading.sensor_name}"}} '
+                    f"{reading.temperature_c:.1f}"
+                )
+
+    metrics = collect_metrics()
+    lines.append("# HELP pi_temp_alerter_cpu_usage_percent CPU usage percentage")
+    lines.append("# TYPE pi_temp_alerter_cpu_usage_percent gauge")
+    lines.append(f"pi_temp_alerter_cpu_usage_percent {metrics.cpu_percent}")
+
+    lines.append("# HELP pi_temp_alerter_memory_usage_percent Memory usage percentage")
+    lines.append("# TYPE pi_temp_alerter_memory_usage_percent gauge")
+    lines.append(f"pi_temp_alerter_memory_usage_percent {metrics.memory_percent}")
+
+    lines.append("# HELP pi_temp_alerter_disk_usage_percent Disk usage percentage")
+    lines.append("# TYPE pi_temp_alerter_disk_usage_percent gauge")
+    lines.append(f"pi_temp_alerter_disk_usage_percent {metrics.disk_percent}")
+
+    lines.append("# HELP pi_temp_alerter_throttled Whether the Pi is throttled")
+    lines.append("# TYPE pi_temp_alerter_throttled gauge")
+    lines.append(f"pi_temp_alerter_throttled {1 if metrics.throttled else 0}")
+
+    return Response("\n".join(lines) + "\n", mimetype="text/plain; charset=utf-8")
+
+
 def start_dashboard() -> Thread | None:
     """Start the Flask dashboard in a background thread."""
     if not config.dashboard_enabled:
