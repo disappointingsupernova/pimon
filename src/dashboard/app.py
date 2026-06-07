@@ -241,10 +241,10 @@ def start_dashboard() -> Thread | None:
             "metrics. Set DASHBOARD_AUTH_ENABLED=true or bind to 127.0.0.1."
         )
 
-    # Suppress Flask's development server warning - we're aware this isn't
-    # gunicorn, but for a Pi monitoring app the built-in server is adequate
-    import werkzeug.serving
-    werkzeug.serving.is_running_from_reloader = lambda: True
+    # Suppress Flask's development server warning banner in logs
+    # Set the werkzeug logger to ERROR level to hide the startup warning
+    # while still allowing the server to bind and run normally
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     thread = Thread(
         target=lambda: app.run(
