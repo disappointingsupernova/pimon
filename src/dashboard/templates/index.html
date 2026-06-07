@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi Temperature Alerter - Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 1.5rem;
+        }
+        h1 { margin-bottom: 1rem; font-size: 1.5rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .card {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 1.2rem;
+            border-left: 4px solid #0f3460;
+        }
+        .card.warning { border-left-color: #f39c12; }
+        .card.critical { border-left-color: #e74c3c; }
+        .card.emergency { border-left-color: #8e44ad; }
+        .card.normal { border-left-color: #27ae60; }
+        .card h2 { font-size: 1rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .temp-value { font-size: 2.5rem; font-weight: bold; }
+        .status { font-size: 0.85rem; opacity: 0.7; margin-top: 0.3rem; }
+        .chart-container { background: #16213e; border-radius: 8px; padding: 1.2rem; }
+        .thresholds { display: flex; gap: 1.5rem; margin-bottom: 1rem; font-size: 0.85rem; }
+        .thresholds span { padding: 0.2rem 0.6rem; border-radius: 4px; }
+        .th-warn { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
+        .th-crit { background: rgba(231, 76, 60, 0.2); color: #e74c3c; }
+        .th-emer { background: rgba(142, 68, 173, 0.2); color: #8e44ad; }
+        .updated { text-align: right; font-size: 0.75rem; opacity: 0.5; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <h1>Pi Temperature Alerter</h1>
+
+    <div class="thresholds">
+        <span class="th-warn">Warning: {{ config.temp_warning }} C</span>
+        <span class="th-crit">Critical: {{ config.temp_critical }} C</span>
+        <span class="th-emer">Emergency: {{ config.temp_emergency }} C</span>
+    </div>
+
+    <div class="grid" id="sensor-cards"></div>
+
+    <div class="chart-container">
+        <canvas id="tempChart" height="80"></canvas>
+    </div>
+
+    <p class="updated" id="last-updated"></p>
+
+    <script>
+        const thresholds = {
+            warning: {{ config.temp_warning }},
+            critical: {{ config.temp_critical }},
+            emergency: {{ config.temp_emergency }}
+        };
+
+        const colours = [
+            'rgb(52, 152, 219)',
+            'rgb(46, 204, 113)',
+            'rgb(155, 89, 182)',
+            'rgb(241, 196, 15)',
+        ];
+
+        let chart;
+        const historyData = {};
+
+        function getLevel(temp) {
+            if (temp >= thresholds.emergency) return 'emergency';
+            if (temp >= thresholds.critical) return 'critical';
+            if (temp >= thresholds.warning) return 'warning';
+            return 'normal';
+        }
+
+        function updateCards(readings) {
+            const container = document.getElementById('sensor-cards');
+            container.innerHTML = '';
+            readings.forEach(r => {
+                const level = r.available ? getLevel(r.temperature_c) : '';
+                const card = document.createElement('div');
+                card.className = `card ${level}`;
+                card.innerHTML = `
+                    <h2>${r.sensor}</h2>
+                    <div class="temp-value">${r.available ? r.temperature_c.toFixed(1) + ' C' : 'N/A'}</div>
+                    <div class="status">${r.available ? level.toUpperCase() : r.error || 'Unavailable'}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { datasets: [] },
+                options: {
+                    responsive: true,
+                    animation: false,
+                    scales: {
+                        x: { type: 'category', ticks: { color: '#888' } },
+                        y: { title: { display: true, text: 'Temperature (C)', color: '#888' }, ticks: { color: '#888' } }
+                    },
+                    plugins: { legend: { labels: { color: '#eee' } } }
+                }
+            });
+        }
+
+        function updateChart(readings) {
+            const now = new Date().toLocaleTimeString();
+            readings.forEach((r, i) => {
+                if (!r.available) return;
+                if (!historyData[r.sensor]) historyData[r.sensor] = { labels: [], data: [] };
+                const h = historyData[r.sensor];
+                h.labels.push(now);
+                h.data.push(r.temperature_c);
+                if (h.labels.length > 60) { h.labels.shift(); h.data.shift(); }
+            });
+
+            chart.data.labels = Object.values(historyData)[0]?.labels || [];
+            chart.data.datasets = Object.entries(historyData).map(([name, h], i) => ({
+                label: name,
+                data: h.data,
+                borderColor: colours[i % colours.length],
+                tension: 0.3,
+                pointRadius: 0,
+            }));
+            chart.update();
+        }
+
+        async function poll() {
+            try {
+                const res = await fetch('/api/current');
+                const data = await res.json();
+                updateCards(data.readings);
+                updateChart(data.readings);
+                document.getElementById('last-updated').textContent = 'Last updated: ' + new Date().toLocaleString();
+            } catch (e) {
+                console.error('Poll failed:', e);
+            }
+        }
+
+        initChart();
+        poll();
+        setInterval(poll, 5000);
+    </script>
+</body>
+</html>
