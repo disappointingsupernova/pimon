@@ -243,6 +243,10 @@ def _cmd_update(_args: argparse.Namespace) -> None:
         print("Service not running - skipping restart.")
 
     print("Update complete.")
+    print()
+
+    # Tail the logs so we can see the service starting up
+    _cmd_logs(argparse.Namespace(lines=20, follow=True))
 
 
 def _cmd_config(_args: argparse.Namespace) -> None:
