@@ -140,8 +140,16 @@ info "Installing Python dependencies"
 
 # Set ownership and permissions
 info "Setting file permissions"
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
+# The service user needs to own the writable directories (logs, data)
+# and be able to read the application files
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/logs"
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/data"
+chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/.env"
 chmod 600 "${INSTALL_DIR}/.env"
+# Ensure the service user can read application files
+chmod -R o+rX "${INSTALL_DIR}/src" "${INSTALL_DIR}/main.py" "${INSTALL_DIR}/requirements.txt"
+# Ensure venv is accessible by the service user
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/venv"
 
 # Install systemd service (generate from template with correct paths)
 info "Installing systemd service"
@@ -164,7 +172,6 @@ StandardError=journal
 
 # Security hardening
 NoNewPrivileges=true
-ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=${INSTALL_DIR}/logs ${INSTALL_DIR}/data
