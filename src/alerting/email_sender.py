@@ -44,7 +44,6 @@ def send_alert_email(
 
 
 def send_recovery_email(
-    recipients: list[str],
     sensor_name: str,
     temperature: float,
     previous_level: AlertLevel,

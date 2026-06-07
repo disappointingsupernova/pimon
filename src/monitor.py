@@ -146,7 +146,7 @@ class Monitor:
             previous_level.name,
         )
         send_recovery_email(
-            [], reading.sensor_name, reading.temperature_c, previous_level
+            reading.sensor_name, reading.temperature_c, previous_level
         )
 
     def get_latest_readings(self) -> list[SensorReading]:
