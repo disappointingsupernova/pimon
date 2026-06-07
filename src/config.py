@@ -100,6 +100,13 @@ class Config:
         self.pushover_enabled: bool = _bool(os.getenv("PUSHOVER_ENABLED", "false"))
         self.pushover_app_token: str = os.getenv("PUSHOVER_APP_TOKEN", "")
         self.pushover_user_key: str = os.getenv("PUSHOVER_USER_KEY", "")
+        self.mqtt_enabled: bool = _bool(os.getenv("MQTT_ENABLED", "false"))
+        self.mqtt_host: str = os.getenv("MQTT_HOST", "localhost")
+        self.mqtt_port: int = _int(os.getenv("MQTT_PORT"), 1883)
+        self.mqtt_username: str = os.getenv("MQTT_USERNAME", "")
+        self.mqtt_password: str = os.getenv("MQTT_PASSWORD", "")
+        self.mqtt_client_id: str = os.getenv("MQTT_CLIENT_ID", "pi-temp-alerter")
+        self.mqtt_topic_prefix: str = os.getenv("MQTT_TOPIC_PREFIX", "pi-temp-alerter")
 
         # Advanced
         self.dry_run: bool = _bool(os.getenv("DRY_RUN", "false"))

@@ -20,6 +20,7 @@ def dispatch_alert(
 ) -> None:
     """Send an alert notification via all enabled channels."""
     from src.alerting.email_sender import send_alert_email
+    from src.alerting.notifiers.mqtt import publish_alert
     from src.alerting.notifiers.pushover import send_pushover
     from src.alerting.notifiers.telegram import send_telegram
     from src.alerting.notifiers.webhook import send_webhook
@@ -52,6 +53,10 @@ def dispatch_alert(
             message=f"Temperature: {temperature:.1f} C",
             level=level.name,
         )
+
+    # MQTT
+    if config.mqtt_enabled:
+        publish_alert(sensor_name, level.name, temperature)
 
 
 def dispatch_recovery(

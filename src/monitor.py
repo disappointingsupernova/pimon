@@ -103,6 +103,11 @@ class Monitor:
         log_temperature_csv(reading.sensor_name, reading.temperature_c)
         record_reading(reading.sensor_name, reading.temperature_c)
 
+        # Publish to MQTT
+        if config.mqtt_enabled:
+            from src.alerting.notifiers.mqtt import publish_reading
+            publish_reading(reading.sensor_name, reading.temperature_c)
+
         # Rate-of-change check
         self._check_rate_of_change(reading)
 
