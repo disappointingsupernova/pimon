@@ -1,7 +1,10 @@
 """Flask web dashboard for real-time temperature monitoring."""
 
 import csv
+import hmac
 import logging
+import os
+import re
 from collections import deque
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -18,6 +21,7 @@ _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 app = Flask(__name__, template_folder=str(_TEMPLATE_DIR))
+app.config["SECRET_KEY"] = os.urandom(32)
 
 # In-memory buffer for recent readings (last 100 per sensor)
 _recent_readings: dict[str, deque] = {}
@@ -33,16 +37,27 @@ def init_dashboard(sensor_manager: SensorManager) -> None:
 
 
 def _check_auth() -> Response | None:
-    """Verify basic auth credentials if authentication is enabled."""
+    """Verify basic auth credentials if authentication is enabled.
+
+    Uses hmac.compare_digest for constant-time comparison to prevent
+    timing attacks against the username and password.
+    """
     if not config.dashboard_auth_enabled:
         return None
 
     auth = request.authorization
-    if (
-        auth is None
-        or auth.username != config.dashboard_username
-        or auth.password != config.dashboard_password
-    ):
+    if auth is None:
+        return Response(
+            "Authentication required.",
+            401,
+            {"WWW-Authenticate": 'Basic realm="Pi Temperature Alerter"'},
+        )
+
+    # Constant-time comparison prevents timing-based credential guessing
+    username_valid = hmac.compare_digest(auth.username, config.dashboard_username)
+    password_valid = hmac.compare_digest(auth.password, config.dashboard_password)
+
+    if not (username_valid and password_valid):
         return Response(
             "Authentication required.",
             401,
