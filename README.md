@@ -15,14 +15,16 @@ A comprehensive Raspberry Pi temperature monitoring and alerting system. Monitor
 - Multi-channel notifications: Email, Webhook, Telegram, Pushover, MQTT
 - HTML emails with colour-coded severity and dashboard links
 - Web dashboard: Real-time Chart.js graphs with auto-refresh and optional auth
+- Per-endpoint toggle: Individually enable/disable API, health, and metrics routes
 - Prometheus /metrics endpoint for Grafana integration
 - System metrics: CPU, memory, disk usage, and throttle state
+- Database persistence: SQLAlchemy with SQLite (default), MySQL, or PostgreSQL
 - CSV logging with daily rotation and configurable retention
 - Daily digest email with min/max/average statistics
 - GPIO fan control with independent on/off thresholds
 - Systemd integration: Auto-start on boot with security hardening
 - Self-update: Pull latest changes and restart via CLI
-- Dry-run mode: Test alert logic without sending emails
+- Dry-run mode: Test alert logic without sending notifications
 - Production deployment: Installs to /opt with dedicated service user
 - Startup configuration validation with clear error messages
 - Service auto-start detection with warning alert
@@ -46,10 +48,12 @@ graph TD
     H --> M[MQTT]
     B --> N[CSV Logger]
     B --> O[Fan Control]
-    A --> P[Flask Dashboard]
-    P --> C
-    P --> Q[REST API]
-    P --> R[Prometheus /metrics]
+    B --> P[Database Repository]
+    A --> Q[Flask Dashboard]
+    Q --> C
+    Q --> R[REST API]
+    Q --> S[Prometheus /metrics]
+    Q --> T[Health Check]
 ```
 
 ## Monitoring Flow
@@ -60,17 +64,20 @@ sequenceDiagram
     participant S as Sensors
     participant T as Threshold Evaluator
     participant D as Dispatcher
+    participant DB as Database
     participant L as Logger
 
     loop Every poll_interval seconds
         M->>S: read_all()
         S-->>M: SensorReading[]
         M->>L: log_temperature_csv()
+        M->>DB: store_reading()
         M->>T: evaluate(sensor, temp)
         T-->>M: (new_level, previous_level)
         alt Level escalated or cooldown elapsed
             M->>D: dispatch_alert()
             D->>D: email, webhook, telegram, pushover, mqtt
+            D->>DB: store_alert()
         end
         alt Recovered to normal
             M->>D: dispatch_recovery()
@@ -302,6 +309,24 @@ TEMP_WARNING_DS18B20_28_0000XXXX=25
 | DASHBOARD_AUTH_ENABLED | bool   | false     | Enable HTTP Basic Auth               |
 | DASHBOARD_USERNAME     | string | admin     | Basic auth username                  |
 | DASHBOARD_PASSWORD     | string | -         | Basic auth password                  |
+| ENDPOINT_API_ENABLED   | bool   | true      | Enable /api/* endpoints              |
+| ENDPOINT_HEALTH_ENABLED| bool   | true      | Enable /api/health endpoint          |
+| ENDPOINT_METRICS_ENABLED| bool  | true      | Enable /metrics Prometheus endpoint  |
+
+### Database
+
+| Field            | Type   | Default                          | Description                          |
+|------------------|--------|----------------------------------|--------------------------------------|
+| DATABASE_ENABLED | bool   | true                             | Enable database persistence          |
+| DATABASE_URL     | string | sqlite:///data/pi_temp_alerter.db| SQLAlchemy connection URL            |
+
+Supported database backends:
+
+| Backend    | URL Format                                          | Driver Package    |
+|------------|-----------------------------------------------------|-------------------|
+| SQLite     | `sqlite:///data/pi_temp_alerter.db`                 | (built-in)        |
+| MySQL      | `mysql+pymysql://user:pass@host:3306/dbname`        | `pip install pymysql` |
+| PostgreSQL | `postgresql+psycopg2://user:pass@host:5432/dbname`  | `pip install psycopg2-binary` |
 
 ### Notifications
 
@@ -336,18 +361,18 @@ TEMP_WARNING_DS18B20_28_0000XXXX=25
 
 | Field    | Type | Default | Description                                  |
 |----------|------|---------|----------------------------------------------|
-| DRY_RUN  | bool | false   | Log alerts without actually sending emails   |
+| DRY_RUN  | bool | false   | Log alerts without actually sending them     |
 
 ## API Endpoints
 
-| Endpoint           | Method | Description                                      |
-|--------------------|--------|--------------------------------------------------|
-| `/`                | GET    | Web dashboard UI                                 |
-| `/api/current`     | GET    | Current sensor readings and thresholds           |
-| `/api/history`     | GET    | Recent in-memory readings for charting           |
-| `/api/history/csv` | GET    | Last 500 entries from CSV logs                   |
-| `/api/health`      | GET    | System health, uptime, metrics, sensor status    |
-| `/metrics`         | GET    | Prometheus exposition format metrics             |
+| Endpoint           | Method | Toggle                    | Description                                      |
+|--------------------|--------|---------------------------|--------------------------------------------------|
+| `/`                | GET    | DASHBOARD_ENABLED         | Web dashboard UI                                 |
+| `/api/current`     | GET    | ENDPOINT_API_ENABLED      | Current sensor readings and thresholds           |
+| `/api/history`     | GET    | ENDPOINT_API_ENABLED      | Recent in-memory readings for charting           |
+| `/api/history/csv` | GET    | ENDPOINT_API_ENABLED      | Last 500 entries from CSV logs                   |
+| `/api/health`      | GET    | ENDPOINT_HEALTH_ENABLED   | System health, uptime, metrics, sensor status    |
+| `/metrics`         | GET    | ENDPOINT_METRICS_ENABLED  | Prometheus exposition format metrics             |
 
 ## DS18B20 Sensor Setup
 
@@ -394,6 +419,9 @@ Pi-Temperature-Alerter/
 |-- install.sh               # Production installer (requires root)
 |-- uninstall.sh             # Clean removal script (requires root)
 |-- .env.example             # Configuration template
+|-- SECURITY.md              # Security policy and guidance
+|-- CONTRIBUTING.md          # Contribution guidelines
+|-- LICENCE                  # MIT licence
 |-- systemd/
 |   `-- pi-temp-alerter.service  # Systemd unit file
 `-- src/
@@ -418,6 +446,9 @@ Pi-Temperature-Alerter/
     |       |-- telegram.py  # Telegram Bot API
     |       |-- pushover.py  # Pushover push notifications
     |       `-- mqtt.py      # MQTT publishing
+    |-- database/
+    |   |-- models.py        # SQLAlchemy models and engine setup
+    |   `-- repository.py    # Query and persistence helpers
     `-- dashboard/
         |-- app.py           # Flask web application
         `-- templates/
@@ -426,4 +457,4 @@ Pi-Temperature-Alerter/
 
 ## Licence
 
-MIT
+MIT - see [LICENCE](LICENCE) for full text.
