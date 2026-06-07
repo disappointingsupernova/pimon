@@ -26,14 +26,16 @@ class SystemMetrics:
 
 def collect_metrics() -> SystemMetrics:
     """Collect current system metrics from /proc and vcgencmd."""
+    mem = _memory_usage()
+    disk = _disk_usage()
     return SystemMetrics(
         cpu_percent=_cpu_percent(),
-        memory_percent=_memory_percent()[0],
-        memory_used_mb=_memory_percent()[1],
-        memory_total_mb=_memory_percent()[2],
-        disk_percent=_disk_percent()[0],
-        disk_used_gb=_disk_percent()[1],
-        disk_total_gb=_disk_percent()[2],
+        memory_percent=mem[0],
+        memory_used_mb=mem[1],
+        memory_total_mb=mem[2],
+        disk_percent=disk[0],
+        disk_used_gb=disk[1],
+        disk_total_gb=disk[2],
         throttled=_is_throttled(),
         throttle_flags=_throttle_flags(),
     )
@@ -55,15 +57,8 @@ def _cpu_percent() -> float:
         return 0.0
 
 
-_mem_cache: tuple[float, float, float] | None = None
-
-
-def _memory_percent() -> tuple[float, float, float]:
-    """Read memory usage from /proc/meminfo."""
-    global _mem_cache
-    if _mem_cache is not None:
-        return _mem_cache
-
+def _memory_usage() -> tuple[float, float, float]:
+    """Read memory usage from /proc/meminfo. Always reads fresh data."""
     try:
         info = Path("/proc/meminfo").read_text()
         mem = {}
@@ -78,29 +73,20 @@ def _memory_percent() -> tuple[float, float, float]:
         total_mb = total_kb / 1024
         used_mb = used_kb / 1024
         percent = (used_kb / total_kb * 100) if total_kb > 0 else 0.0
-        _mem_cache = (round(percent, 1), round(used_mb, 1), round(total_mb, 1))
-        return _mem_cache
+        return (round(percent, 1), round(used_mb, 1), round(total_mb, 1))
     except (OSError, ValueError, KeyError):
         return (0.0, 0.0, 0.0)
 
 
-_disk_cache: tuple[float, float, float] | None = None
-
-
-def _disk_percent() -> tuple[float, float, float]:
-    """Read root filesystem disk usage."""
-    global _disk_cache
-    if _disk_cache is not None:
-        return _disk_cache
-
+def _disk_usage() -> tuple[float, float, float]:
+    """Read root filesystem disk usage. Always reads fresh data."""
     try:
         import shutil
         usage = shutil.disk_usage("/")
         total_gb = usage.total / (1024 ** 3)
         used_gb = usage.used / (1024 ** 3)
         percent = (usage.used / usage.total * 100) if usage.total > 0 else 0.0
-        _disk_cache = (round(percent, 1), round(used_gb, 1), round(total_gb, 1))
-        return _disk_cache
+        return (round(percent, 1), round(used_gb, 1), round(total_gb, 1))
     except OSError:
         return (0.0, 0.0, 0.0)
 
