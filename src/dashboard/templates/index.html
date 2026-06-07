@@ -78,6 +78,12 @@
             return 'normal';
         }
 
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         function updateCards(readings) {
             const container = document.getElementById('sensor-cards');
             container.innerHTML = '';
@@ -85,11 +91,21 @@
                 const level = r.available ? getLevel(r.temperature_c) : '';
                 const card = document.createElement('div');
                 card.className = `card ${level}`;
-                card.innerHTML = `
-                    <h2>${r.sensor}</h2>
-                    <div class="temp-value">${r.available ? r.temperature_c.toFixed(1) + ' C' : 'N/A'}</div>
-                    <div class="status">${r.available ? level.toUpperCase() : r.error || 'Unavailable'}</div>
-                `;
+
+                const h2 = document.createElement('h2');
+                h2.textContent = r.sensor;
+
+                const tempDiv = document.createElement('div');
+                tempDiv.className = 'temp-value';
+                tempDiv.textContent = r.available ? r.temperature_c.toFixed(1) + ' C' : 'N/A';
+
+                const statusDiv = document.createElement('div');
+                statusDiv.className = 'status';
+                statusDiv.textContent = r.available ? level.toUpperCase() : (r.error || 'Unavailable');
+
+                card.appendChild(h2);
+                card.appendChild(tempDiv);
+                card.appendChild(statusDiv);
                 container.appendChild(card);
             });
         }
