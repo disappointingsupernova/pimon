@@ -105,7 +105,9 @@ def _cmd_history(args: argparse.Namespace) -> None:
     """Display recent temperature history from the data store."""
     # Prefer database if enabled, fall back to CSV
     if config.database_enabled:
+        from src.database.models import init_db
         from src.database.repository import get_recent_readings
+        init_db()
         rows = get_recent_readings(args.lines)
     else:
         from src.logger import get_recent_csv_rows
@@ -260,9 +262,11 @@ def _cmd_config(_args: argparse.Namespace) -> None:
 def _cmd_migrate_db(args: argparse.Namespace) -> None:
     """Migrate all data from one database backend to another."""
     from src.database.migrate import migrate_database
+    from src.database.models import init_db
     from src.logger import setup_logging
 
     setup_logging()
+    init_db()
 
     source_url = args.source or config.database_url
     target_url = args.target
@@ -525,5 +529,19 @@ def main() -> None:
     commands[args.command](args)
 
 
+def _run() -> None:
+    """Top-level entry point with user-friendly error handling."""
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
+        sys.exit(130)
+    except Exception as exc:
+        # Show a clean one-line error to the user
+        print(f"Error: {exc}")
+        print("\nRun with LOG_LEVEL=DEBUG in .env for full details, or check logs/alerter.log")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    main()
+    _run()

@@ -56,7 +56,10 @@ def store_readings_batch(readings: list[tuple[str, float]]) -> None:
 
 
 def get_recent_readings(count: int = 20) -> list[dict]:
-    """Retrieve the most recent temperature readings."""
+    """Retrieve the most recent temperature readings.
+
+    Returns an empty list if the table is empty or does not exist.
+    """
     session = get_session()
     try:
         rows = (
@@ -65,7 +68,6 @@ def get_recent_readings(count: int = 20) -> list[dict]:
             .limit(count)
             .all()
         )
-        # Return in chronological order
         return [
             {
                 "timestamp": r.timestamp.isoformat() if r.timestamp else "",
@@ -74,6 +76,9 @@ def get_recent_readings(count: int = 20) -> list[dict]:
             }
             for r in reversed(rows)
         ]
+    except Exception as exc:
+        logger.error("Failed to query readings: %s", exc)
+        return []
     finally:
         session.close()
 
@@ -99,6 +104,9 @@ def get_readings_for_sensor(sensor_name: str, hours: int = 24) -> list[dict]:
             }
             for r in rows
         ]
+    except Exception as exc:
+        logger.error("Failed to query sensor readings: %s", exc)
+        return []
     finally:
         session.close()
 
@@ -130,6 +138,9 @@ def get_daily_stats(sensor_name: str, day: datetime) -> dict | None:
                 "avg": round(result[2], 1),
                 "count": result[3],
             }
+        return None
+    except Exception as exc:
+        logger.error("Failed to query daily stats: %s", exc)
         return None
     finally:
         session.close()
