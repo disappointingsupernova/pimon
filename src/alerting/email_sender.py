@@ -9,6 +9,7 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from html import escape as html_escape
 
 from src.alerting.thresholds import AlertLevel
 from src.config import config
@@ -34,18 +35,22 @@ def _html_alert(level: AlertLevel, sensor_name: str, temperature: float) -> str:
     thresholds = config.get_thresholds(sensor_name)
     dashboard_url = f"http://{config.dashboard_host}:{config.dashboard_port}"
 
+    # Escape all interpolated values to prevent HTML injection
+    safe_sensor = html_escape(sensor_name)
+    safe_level = html_escape(level.name)
+
     return f"""\
 <html>
 <body style="font-family: -apple-system, sans-serif; padding: 20px; background: #f5f5f5;">
   <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden;">
     <div style="background: {colour}; padding: 16px 20px; color: white;">
-      <h2 style="margin: 0; font-size: 18px;">{level.name}: {sensor_name}</h2>
+      <h2 style="margin: 0; font-size: 18px;">{safe_level}: {safe_sensor}</h2>
     </div>
     <div style="padding: 20px;">
       <p style="font-size: 36px; font-weight: bold; margin: 10px 0;">{temperature:.1f} C</p>
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-        <tr><td style="padding: 4px 0; color: #666;">Sensor</td><td>{sensor_name}</td></tr>
-        <tr><td style="padding: 4px 0; color: #666;">Level</td><td style="color: {colour}; font-weight: bold;">{level.name}</td></tr>
+        <tr><td style="padding: 4px 0; color: #666;">Sensor</td><td>{safe_sensor}</td></tr>
+        <tr><td style="padding: 4px 0; color: #666;">Level</td><td style="color: {colour}; font-weight: bold;">{safe_level}</td></tr>
         <tr><td style="padding: 4px 0; color: #666;">Warning</td><td>{thresholds['warning']} C</td></tr>
         <tr><td style="padding: 4px 0; color: #666;">Critical</td><td>{thresholds['critical']} C</td></tr>
         <tr><td style="padding: 4px 0; color: #666;">Emergency</td><td>{thresholds['emergency']} C</td></tr>
@@ -64,18 +69,22 @@ def _html_recovery(sensor_name: str, temperature: float, previous_level: AlertLe
     """Generate HTML body for a recovery email."""
     dashboard_url = f"http://{config.dashboard_host}:{config.dashboard_port}"
 
+    # Escape all interpolated values to prevent HTML injection
+    safe_sensor = html_escape(sensor_name)
+    safe_prev_level = html_escape(previous_level.name)
+
     return f"""\
 <html>
 <body style="font-family: -apple-system, sans-serif; padding: 20px; background: #f5f5f5;">
   <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden;">
     <div style="background: #27ae60; padding: 16px 20px; color: white;">
-      <h2 style="margin: 0; font-size: 18px;">RECOVERED: {sensor_name}</h2>
+      <h2 style="margin: 0; font-size: 18px;">RECOVERED: {safe_sensor}</h2>
     </div>
     <div style="padding: 20px;">
       <p style="font-size: 36px; font-weight: bold; margin: 10px 0;">{temperature:.1f} C</p>
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-        <tr><td style="padding: 4px 0; color: #666;">Sensor</td><td>{sensor_name}</td></tr>
-        <tr><td style="padding: 4px 0; color: #666;">Previous level</td><td>{previous_level.name}</td></tr>
+        <tr><td style="padding: 4px 0; color: #666;">Sensor</td><td>{safe_sensor}</td></tr>
+        <tr><td style="padding: 4px 0; color: #666;">Previous level</td><td>{safe_prev_level}</td></tr>
         <tr><td style="padding: 4px 0; color: #666;">Current</td><td style="color: #27ae60; font-weight: bold;">NORMAL</td></tr>
       </table>
       <p style="margin-top: 16px; font-size: 13px; color: #666;">
