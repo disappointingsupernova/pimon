@@ -5,9 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/pi-temperature-alerter
-ExecStart=/home/pi/pi-temperature-alerter/venv/bin/python main.py start
+User=pi-temp-alerter
+Group=pi-temp-alerter
+WorkingDirectory=/opt/pi-temp-alerter
+ExecStart=/opt/pi-temp-alerter/venv/bin/python main.py start
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
@@ -16,7 +17,9 @@ StandardError=journal
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/home/pi/pi-temperature-alerter/logs /home/pi/pi-temperature-alerter/data
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/pi-temp-alerter/logs /opt/pi-temp-alerter/data
 
 [Install]
 WantedBy=multi-user.target
