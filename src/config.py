@@ -148,7 +148,8 @@ class Config:
         """
         errors: list[str] = []
 
-        # SMTP validation - only required if recipients are configured
+        # SMTP validation - only require host and from address if recipients are set.
+        # Username/password are optional (local relays like Postfix don't need auth).
         all_recipients = (
             self.recipients_warning
             + self.recipients_critical
@@ -159,10 +160,6 @@ class Config:
                 errors.append("SMTP_HOST is not set (required when recipients are configured)")
             if not self.email_from:
                 errors.append("EMAIL_FROM is not set (required when recipients are configured)")
-            if not self.smtp_username:
-                errors.append("SMTP_USERNAME is not set (required when recipients are configured)")
-            if not self.smtp_password:
-                errors.append("SMTP_PASSWORD is not set (required when recipients are configured)")
 
         # Threshold ordering
         if not (self.temp_warning < self.temp_critical < self.temp_emergency):
