@@ -22,6 +22,7 @@ class AlertState:
 
     sensor_name: str
     current_level: AlertLevel = AlertLevel.NORMAL
+    level_entered_at: datetime | None = None
     last_alert_times: dict[AlertLevel, datetime] = field(default_factory=dict)
 
     def can_send_alert(self, level: AlertLevel) -> bool:
@@ -35,6 +36,12 @@ class AlertState:
     def record_alert(self, level: AlertLevel) -> None:
         """Record that an alert was sent at the current time."""
         self.last_alert_times[level] = datetime.now(timezone.utc)
+
+    def seconds_at_current_level(self) -> float:
+        """Return how long the sensor has been at the current level."""
+        if self.level_entered_at is None:
+            return 0.0
+        return (datetime.now(timezone.utc) - self.level_entered_at).total_seconds()
 
 
 class ThresholdEvaluator:
@@ -63,6 +70,24 @@ class ThresholdEvaluator:
         previous_level = state.current_level
         thresholds = config.get_thresholds(sensor_name)
         new_level = self._compute_level(temperature, previous_level, thresholds)
+
+        # Escalation timeout: if stuck at a non-normal level for too long, escalate
+        if (
+            config.escalation_timeout > 0
+            and new_level == previous_level
+            and new_level not in (AlertLevel.NORMAL, AlertLevel.EMERGENCY)
+            and state.seconds_at_current_level() >= config.escalation_timeout
+        ):
+            escalation_map = {
+                AlertLevel.WARNING: AlertLevel.CRITICAL,
+                AlertLevel.CRITICAL: AlertLevel.EMERGENCY,
+            }
+            new_level = escalation_map.get(new_level, new_level)
+
+        # Track when we enter a new level
+        if new_level != previous_level:
+            state.level_entered_at = datetime.now(timezone.utc)
+
         state.current_level = new_level
         return new_level, previous_level
 
