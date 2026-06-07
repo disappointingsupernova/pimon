@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from threading import Thread
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request, Response
 
 from src.config import config
 from src.sensors.manager import SensorManager
@@ -30,6 +30,31 @@ def init_dashboard(sensor_manager: SensorManager) -> None:
     """Initialise the dashboard with a reference to the sensor manager."""
     global _sensor_manager
     _sensor_manager = sensor_manager
+
+
+def _check_auth() -> Response | None:
+    """Verify basic auth credentials if authentication is enabled."""
+    if not config.dashboard_auth_enabled:
+        return None
+
+    auth = request.authorization
+    if (
+        auth is None
+        or auth.username != config.dashboard_username
+        or auth.password != config.dashboard_password
+    ):
+        return Response(
+            "Authentication required.",
+            401,
+            {"WWW-Authenticate": 'Basic realm="Pi Temperature Alerter"'},
+        )
+    return None
+
+
+@app.before_request
+def before_request():
+    """Enforce authentication on all routes if enabled."""
+    return _check_auth()
 
 
 def record_reading(sensor_name: str, temperature: float) -> None:

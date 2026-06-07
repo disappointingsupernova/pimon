@@ -86,6 +86,9 @@ class Config:
         self.dashboard_enabled: bool = _bool(os.getenv("DASHBOARD_ENABLED", "true"))
         self.dashboard_host: str = os.getenv("DASHBOARD_HOST", "0.0.0.0")
         self.dashboard_port: int = _int(os.getenv("DASHBOARD_PORT"), 5000)
+        self.dashboard_auth_enabled: bool = _bool(os.getenv("DASHBOARD_AUTH_ENABLED", "false"))
+        self.dashboard_username: str = os.getenv("DASHBOARD_USERNAME", "admin")
+        self.dashboard_password: str = os.getenv("DASHBOARD_PASSWORD", "")
 
         # Notifications
         self.webhook_enabled: bool = _bool(os.getenv("WEBHOOK_ENABLED", "false"))
