@@ -30,10 +30,12 @@ If you discover a security vulnerability in Pi Temperature Alerter, please repor
 
 ### Network Exposure
 
-- The Flask dashboard binds to `0.0.0.0` by default, exposing it to the local network.
+- The Flask dashboard binds to `0.0.0.0` by default, exposing it to the local network. A warning is logged on startup if authentication is not enabled.
 - Enable `DASHBOARD_AUTH_ENABLED=true` with a strong password if the Pi is accessible on an untrusted network.
+- Authentication uses timing-safe (`hmac.compare_digest`) comparisons to prevent credential guessing via timing attacks.
 - Consider placing the dashboard behind a reverse proxy (nginx, Caddy) with HTTPS for production use.
 - Individual endpoints (`/api/*`, `/metrics`, `/api/health`) can be disabled via `ENDPOINT_*_ENABLED` settings.
+- All user-derived values (sensor names) are escaped before being rendered in HTML templates, emails, and Prometheus metrics to prevent injection.
 
 ### Service Hardening
 
@@ -63,6 +65,12 @@ The systemd service file includes several security features:
 - Use TLS-enabled MQTT brokers in production.
 - Use dedicated MQTT credentials with limited publish/subscribe permissions.
 - The MQTT password is never logged.
+
+### Webhook Security
+
+- SSL certificate verification is enabled by default for all webhook URLs.
+- Set `WEBHOOK_VERIFY_SSL=false` only for internal endpoints with self-signed certificates.
+- Webhook URLs are treated as secrets and never exposed via the dashboard or API.
 
 ### Third-Party Notifications
 
