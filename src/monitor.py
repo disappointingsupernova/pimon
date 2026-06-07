@@ -73,6 +73,12 @@ class Monitor:
             config.temp_critical,
             config.temp_emergency,
         )
+        if config.low_write_mode:
+            logger.info(
+                "Low-write mode active: CSV disabled, poll interval %ds, log level %s",
+                config.poll_interval,
+                config.log_level,
+            )
 
         while self._running:
             self._poll()

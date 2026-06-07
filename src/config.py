@@ -123,6 +123,13 @@ class Config:
 
         # Advanced
         self.dry_run: bool = _bool(os.getenv("DRY_RUN", "false"))
+        self.low_write_mode: bool = _bool(os.getenv("LOW_WRITE_MODE", "false"))
+
+        # Apply low-write mode overrides to reduce SD card wear
+        if self.low_write_mode:
+            self.csv_logging_enabled = False
+            self.poll_interval = max(self.poll_interval, 60)
+            self.log_level = "WARNING" if self.log_level == "INFO" else self.log_level
 
         # Fan control
         self.fan_control_enabled: bool = _bool(os.getenv("FAN_CONTROL_ENABLED", "false"))

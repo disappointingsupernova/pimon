@@ -254,6 +254,7 @@ def _cmd_config(_args: argparse.Namespace) -> None:
     print(f"  Off threshold:     {config.fan_off_threshold} C")
     print()
     print(f"Dry Run:             {config.dry_run}")
+    print(f"Low-Write Mode:      {config.low_write_mode}")
 
 
 def _cmd_migrate_db(args: argparse.Namespace) -> None:
