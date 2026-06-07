@@ -208,8 +208,10 @@ def prometheus_metrics():
         for sensor in _sensor_manager.sensors:
             reading = sensor.read()
             if reading.available:
+                # Sanitise sensor name to prevent metrics format injection
+                safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', reading.sensor_name)
                 lines.append(
-                    f'pi_temp_alerter_temperature_celsius{{sensor="{reading.sensor_name}"}} '
+                    f'pi_temp_alerter_temperature_celsius{{sensor="{safe_name}"}} '
                     f"{reading.temperature_c:.1f}"
                 )
 
