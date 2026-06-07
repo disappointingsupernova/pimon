@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from src.alerting.email_sender import send_alert_email, send_recovery_email
 from src.alerting.thresholds import AlertLevel, ThresholdEvaluator
 from src.config import config
+from src.dashboard.app import record_reading
 from src.logger import log_temperature_csv
 from src.sensors.base import SensorReading
 from src.sensors.manager import SensorManager
@@ -22,9 +23,9 @@ logger = logging.getLogger("pi_temp_alerter")
 class Monitor:
     """Main monitoring loop with graceful shutdown support."""
 
-    def __init__(self) -> None:
+    def __init__(self, sensor_manager: SensorManager) -> None:
         self._running = False
-        self._sensor_manager = SensorManager()
+        self._sensor_manager = sensor_manager
         self._evaluator = ThresholdEvaluator()
         self._start_time: datetime | None = None
 
@@ -91,8 +92,9 @@ class Monitor:
             "Sensor %s: %.1f C", reading.sensor_name, reading.temperature_c
         )
 
-        # Log to CSV
+        # Log to CSV and dashboard buffer
         log_temperature_csv(reading.sensor_name, reading.temperature_c)
+        record_reading(reading.sensor_name, reading.temperature_c)
 
         # Evaluate thresholds
         new_level, previous_level = self._evaluator.evaluate(

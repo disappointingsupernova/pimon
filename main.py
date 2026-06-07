@@ -24,13 +24,13 @@ def _cmd_start(args: argparse.Namespace) -> None:
 
     setup_logging()
 
-    monitor = Monitor()
     sensor_manager = SensorManager()
     init_dashboard(sensor_manager)
 
     if config.dashboard_enabled:
         start_dashboard()
 
+    monitor = Monitor(sensor_manager)
     monitor.start()
 
 
