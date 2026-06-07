@@ -28,6 +28,8 @@ _recent_readings: dict[str, deque] = {}
 _sensor_manager: SensorManager | None = None
 _start_time: datetime = datetime.now(timezone.utc)
 _last_poll_time: datetime | None = None
+# Cached latest readings from the monitor loop (updated every poll cycle)
+_latest_sensor_data: list[dict] = []
 
 
 def init_dashboard(sensor_manager: SensorManager) -> None:
@@ -84,6 +86,16 @@ def record_reading(sensor_name: str, temperature: float) -> None:
     })
 
 
+def update_latest_readings(readings: list[dict]) -> None:
+    """Update the cached sensor data served by API endpoints.
+
+    Called by the monitor after each poll cycle so dashboard endpoints
+    serve cached data rather than triggering fresh subprocess reads.
+    """
+    global _latest_sensor_data
+    _latest_sensor_data = readings
+
+
 @app.route("/")
 def index():
     """Render the main dashboard page."""
@@ -92,23 +104,12 @@ def index():
 
 @app.route("/api/current")
 def api_current():
-    """Return current readings from all sensors."""
+    """Return current readings from cached monitor data."""
     if not config.endpoint_api_enabled:
         return Response("Endpoint disabled.", 404)
-    if _sensor_manager is None:
-        return jsonify({"error": "Sensor manager not initialised"}), 500
 
-    readings = _sensor_manager.read_all()
     return jsonify({
-        "readings": [
-            {
-                "sensor": r.sensor_name,
-                "temperature_c": r.temperature_c,
-                "available": r.available,
-                "error": r.error,
-            }
-            for r in readings
-        ],
+        "readings": _latest_sensor_data,
         "thresholds": {
             "warning": config.temp_warning,
             "critical": config.temp_critical,
@@ -127,31 +128,19 @@ def api_history():
 
 @app.route("/api/health")
 def api_health():
-    """Return system health status for external monitoring."""
+    """Return system health status from cached data."""
     if not config.endpoint_health_enabled:
         return Response("Endpoint disabled.", 404)
     from src.sensors.system_metrics import collect_metrics
 
     uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
-
-    sensor_status = []
-    if _sensor_manager:
-        for sensor in _sensor_manager.sensors:
-            reading = sensor.read()
-            sensor_status.append({
-                "sensor": reading.sensor_name,
-                "available": reading.available,
-                "temperature_c": reading.temperature_c if reading.available else None,
-                "error": reading.error,
-            })
-
     metrics = collect_metrics()
 
     return jsonify({
         "status": "healthy",
         "uptime_seconds": round(uptime, 1),
         "last_poll": _last_poll_time.isoformat() if _last_poll_time else None,
-        "sensors": sensor_status,
+        "sensors": _latest_sensor_data,
         "system": {
             "cpu_percent": metrics.cpu_percent,
             "memory_percent": metrics.memory_percent,
@@ -202,17 +191,15 @@ def prometheus_metrics():
     uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
     lines.append(f"pi_temp_alerter_uptime_seconds {uptime:.1f}")
 
-    if _sensor_manager:
+    if _latest_sensor_data:
         lines.append("# HELP pi_temp_alerter_temperature_celsius Current temperature")
         lines.append("# TYPE pi_temp_alerter_temperature_celsius gauge")
-        for sensor in _sensor_manager.sensors:
-            reading = sensor.read()
-            if reading.available:
-                # Sanitise sensor name to prevent metrics format injection
-                safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', reading.sensor_name)
+        for sensor_data in _latest_sensor_data:
+            if sensor_data.get("available", False):
+                safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', sensor_data["sensor"])
                 lines.append(
                     f'pi_temp_alerter_temperature_celsius{{sensor="{safe_name}"}} '
-                    f"{reading.temperature_c:.1f}"
+                    f"{sensor_data['temperature_c']:.1f}"
                 )
 
     metrics = collect_metrics()

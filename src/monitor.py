@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 from src.alerting.dispatcher import dispatch_alert, dispatch_recovery
 from src.alerting.thresholds import AlertLevel, ThresholdEvaluator
 from src.config import config
-from src.dashboard.app import record_reading
+from src.dashboard.app import record_reading, update_latest_readings
 from src.logger import log_temperatures_csv_batch, prune_old_csv_files
 from src.sensors.base import SensorReading
 from src.sensors.manager import SensorManager
@@ -144,6 +144,17 @@ class Monitor:
             if self._mqtt_publish:
                 for sensor_name, temp in successful:
                     self._mqtt_publish(sensor_name, temp)
+
+        # Update cached data for dashboard API endpoints
+        update_latest_readings([
+            {
+                "sensor": r.sensor_name,
+                "temperature_c": r.temperature_c,
+                "available": r.available,
+                "error": r.error,
+            }
+            for r in readings
+        ])
 
         # Send daily digest once per day
         self._check_daily_digest()
