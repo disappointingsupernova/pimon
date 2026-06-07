@@ -86,6 +86,16 @@ class Config:
         self.dashboard_host: str = os.getenv("DASHBOARD_HOST", "0.0.0.0")
         self.dashboard_port: int = _int(os.getenv("DASHBOARD_PORT"), 5000)
 
+        # Notifications
+        self.webhook_enabled: bool = _bool(os.getenv("WEBHOOK_ENABLED", "false"))
+        self.webhook_url: str = os.getenv("WEBHOOK_URL", "")
+        self.telegram_enabled: bool = _bool(os.getenv("TELEGRAM_ENABLED", "false"))
+        self.telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        self.telegram_chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")
+        self.pushover_enabled: bool = _bool(os.getenv("PUSHOVER_ENABLED", "false"))
+        self.pushover_app_token: str = os.getenv("PUSHOVER_APP_TOKEN", "")
+        self.pushover_user_key: str = os.getenv("PUSHOVER_USER_KEY", "")
+
         # Advanced
         self.dry_run: bool = _bool(os.getenv("DRY_RUN", "false"))
 

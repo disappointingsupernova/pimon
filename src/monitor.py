@@ -9,7 +9,7 @@ import signal
 import time
 from datetime import datetime, timezone
 
-from src.alerting.email_sender import send_alert_email, send_recovery_email
+from src.alerting.dispatcher import dispatch_alert, dispatch_recovery
 from src.alerting.thresholds import AlertLevel, ThresholdEvaluator
 from src.config import config
 from src.dashboard.app import record_reading
@@ -124,7 +124,7 @@ class Monitor:
             self._handle_recovery(reading, previous_level)
 
     def _handle_alert(self, reading: SensorReading, level: AlertLevel) -> None:
-        """Send an alert email and record the event."""
+        """Dispatch alert via all enabled notification channels."""
         recipients = self._evaluator.get_recipients(level)
         if not recipients:
             logger.warning("No recipients configured for level %s", level.name)
@@ -137,20 +137,20 @@ class Monitor:
             reading.temperature_c,
         )
 
-        send_alert_email(recipients, level, reading.sensor_name, reading.temperature_c)
+        dispatch_alert(level, reading.sensor_name, reading.temperature_c, recipients)
 
         state = self._evaluator.get_state(reading.sensor_name)
         state.record_alert(level)
 
     def _handle_recovery(self, reading: SensorReading, previous_level: AlertLevel) -> None:
-        """Send a recovery notification."""
+        """Dispatch recovery notification via all enabled channels."""
         logger.info(
             "RECOVERY: Sensor %s back to normal at %.1f C (was %s)",
             reading.sensor_name,
             reading.temperature_c,
             previous_level.name,
         )
-        send_recovery_email(
+        dispatch_recovery(
             reading.sensor_name, reading.temperature_c, previous_level
         )
 
