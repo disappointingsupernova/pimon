@@ -5,10 +5,14 @@ Provides commands for monitoring, status checks, and configuration validation.
 
 import argparse
 import csv
+import subprocess
 import sys
 from pathlib import Path
 
 from src.config import config
+
+_INSTALL_DIR = Path("/opt/pi-temp-alerter")
+_APP_DIR = Path(__file__).resolve().parent
 
 
 def _cmd_start(args: argparse.Namespace) -> None:
@@ -53,7 +57,7 @@ def _cmd_status(_args: argparse.Namespace) -> None:
 
 def _cmd_history(args: argparse.Namespace) -> None:
     """Display recent temperature history from CSV log."""
-    csv_path = Path(__file__).resolve().parent / "data" / "temperature_history.csv"
+    csv_path = _APP_DIR / "data" / "temperature_history.csv"
     if not csv_path.exists():
         print("No history data found. Start monitoring to begin logging.")
         sys.exit(1)
@@ -88,6 +92,55 @@ def _cmd_test_email(_args: argparse.Namespace) -> None:
     else:
         print("Failed to send test email. Check logs for details.")
         sys.exit(1)
+
+
+def _cmd_update(_args: argparse.Namespace) -> None:
+    """Pull latest changes from git and restart the service."""
+    import os
+
+    if os.geteuid() != 0:
+        print("The update command must be run as root (sudo).")
+        sys.exit(1)
+
+    app_dir = _INSTALL_DIR if _INSTALL_DIR.exists() else _APP_DIR
+    print(f"Updating from {app_dir}...")
+
+    # Pull latest from remote
+    result = subprocess.run(
+        ["git", "pull", "--ff-only"],
+        cwd=str(app_dir),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"Git pull failed:\n{result.stderr}")
+        sys.exit(1)
+
+    print(result.stdout.strip())
+
+    # Reinstall dependencies
+    venv_pip = app_dir / "venv" / "bin" / "pip"
+    if venv_pip.exists():
+        print("Updating dependencies...")
+        subprocess.run(
+            [str(venv_pip), "install", "-r", "requirements.txt", "--quiet"],
+            cwd=str(app_dir),
+            check=True,
+        )
+
+    # Restart service if active
+    svc_check = subprocess.run(
+        ["systemctl", "is-active", "--quiet", "pi-temp-alerter"],
+        capture_output=True,
+    )
+    if svc_check.returncode == 0:
+        print("Restarting pi-temp-alerter service...")
+        subprocess.run(["systemctl", "restart", "pi-temp-alerter"], check=True)
+        print("Service restarted.")
+    else:
+        print("Service not running - skipping restart.")
+
+    print("Update complete.")
 
 
 def _cmd_config(_args: argparse.Namespace) -> None:
@@ -159,6 +212,9 @@ def main() -> None:
     # config
     subparsers.add_parser("config", help="Display current configuration")
 
+    # update
+    subparsers.add_parser("update", help="Pull latest changes and restart service (requires root)")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -171,6 +227,7 @@ def main() -> None:
         "history": _cmd_history,
         "test-email": _cmd_test_email,
         "config": _cmd_config,
+        "update": _cmd_update,
     }
     commands[args.command](args)
 
