@@ -1,10 +1,11 @@
 """CLI entry point for Pi Temperature Alerter.
 
-Provides commands for monitoring, status checks, and configuration validation.
+Provides commands for starting the monitoring daemon, checking sensor
+status, viewing history, testing email configuration, displaying
+current settings, and performing self-updates.
 """
 
 import argparse
-import csv
 import subprocess
 import sys
 from pathlib import Path
@@ -14,9 +15,37 @@ from src.config import config
 _INSTALL_DIR = Path("/opt/pi-temp-alerter")
 _APP_DIR = Path(__file__).resolve().parent
 
+_PROG_DESCRIPTION = """\
+Pi Temperature Alerter - Raspberry Pi system health monitoring and alerting.
 
-def _cmd_start(args: argparse.Namespace) -> None:
-    """Start the monitoring daemon."""
+Monitors CPU, GPU, and DS18B20 temperature sensors with configurable
+multi-channel alerting (email, webhook, Telegram, Pushover, MQTT),
+hysteresis-based threshold evaluation, real-time web dashboard, and
+persistent data storage via SQLAlchemy (SQLite/MySQL/PostgreSQL).
+
+Configuration is managed via .env file. Run 'config' to view current
+settings or see .env.example for all available options.
+"""
+
+_PROG_EPILOG = """\
+Examples:
+  python main.py start          Start monitoring with all configured sensors
+  python main.py status         Quick check of current temperatures
+  python main.py history -n 50  Show last 50 temperature readings
+  python main.py test-email     Verify SMTP is working
+  python main.py config         Display all settings (secrets redacted)
+  sudo python main.py update    Pull latest code and restart service
+
+Documentation: https://github.com/your-user/Pi-Temperature-Alerter
+"""
+
+
+# =============================================================================
+# Command implementations
+# =============================================================================
+
+def _cmd_start(_args: argparse.Namespace) -> None:
+    """Start the monitoring daemon with all configured sensors and alerting."""
     from src.dashboard.app import init_dashboard, start_dashboard
     from src.logger import setup_logging
     from src.monitor import Monitor
@@ -52,7 +81,7 @@ def _cmd_start(args: argparse.Namespace) -> None:
 
 
 def _cmd_status(_args: argparse.Namespace) -> None:
-    """Show current temperature readings."""
+    """Show current temperature readings from all enabled sensors."""
     from src.sensors.manager import SensorManager
 
     manager = SensorManager()
@@ -73,10 +102,15 @@ def _cmd_status(_args: argparse.Namespace) -> None:
 
 
 def _cmd_history(args: argparse.Namespace) -> None:
-    """Display recent temperature history from CSV log."""
-    from src.logger import get_recent_csv_rows
+    """Display recent temperature history from the data store."""
+    # Prefer database if enabled, fall back to CSV
+    if config.database_enabled:
+        from src.database.repository import get_recent_readings
+        rows = get_recent_readings(args.lines)
+    else:
+        from src.logger import get_recent_csv_rows
+        rows = get_recent_csv_rows(args.lines)
 
-    rows = get_recent_csv_rows(args.lines)
     if not rows:
         print("No history data found. Start monitoring to begin logging.")
         sys.exit(1)
@@ -88,7 +122,7 @@ def _cmd_history(args: argparse.Namespace) -> None:
 
 
 def _cmd_test_email(_args: argparse.Namespace) -> None:
-    """Send a test email to verify SMTP configuration."""
+    """Send a test email to verify SMTP configuration is working."""
     from src.alerting.email_sender import send_test_email
     from src.logger import setup_logging
 
@@ -105,7 +139,7 @@ def _cmd_test_email(_args: argparse.Namespace) -> None:
 
 
 def _cmd_update(_args: argparse.Namespace) -> None:
-    """Pull latest changes from git and restart the service."""
+    """Pull latest changes from git and restart the systemd service."""
     import os
 
     if os.geteuid() != 0:
@@ -154,39 +188,80 @@ def _cmd_update(_args: argparse.Namespace) -> None:
 
 
 def _cmd_config(_args: argparse.Namespace) -> None:
-    """Display the current configuration (redacting secrets)."""
-    print("Current Configuration")
-    print("=" * 50)
-    print(f"  SMTP Host:           {config.smtp_host}")
-    print(f"  SMTP Port:           {config.smtp_port}")
-    print(f"  SMTP TLS:            {config.smtp_use_tls}")
-    print(f"  SMTP Username:       {config.smtp_username}")
-    print(f"  SMTP Password:       {'***' if config.smtp_password else '(not set)'}")
-    print(f"  Email From:          {config.email_from}")
+    """Display the current configuration with secrets redacted."""
+    print("Pi Temperature Alerter - Current Configuration")
+    print("=" * 60)
     print()
-    print(f"  Warning Recipients:  {', '.join(config.recipients_warning) or '(none)'}")
-    print(f"  Critical Recipients: {', '.join(config.recipients_critical) or '(none)'}")
-    print(f"  Emergency Recipients:{', '.join(config.recipients_emergency) or '(none)'}")
+    print("SMTP")
+    print(f"  Host:              {config.smtp_host}")
+    print(f"  Port:              {config.smtp_port}")
+    print(f"  TLS:               {config.smtp_use_tls}")
+    print(f"  Username:          {config.smtp_username}")
+    print(f"  Password:          {'***' if config.smtp_password else '(not set)'}")
+    print(f"  From:              {config.email_from}")
     print()
-    print(f"  Temp Warning:        {config.temp_warning} C")
-    print(f"  Temp Critical:       {config.temp_critical} C")
-    print(f"  Temp Emergency:      {config.temp_emergency} C")
-    print(f"  Hysteresis:          {config.temp_hysteresis} C")
+    print("Recipients")
+    print(f"  Warning:           {', '.join(config.recipients_warning) or '(none)'}")
+    print(f"  Critical:          {', '.join(config.recipients_critical) or '(none)'}")
+    print(f"  Emergency:         {', '.join(config.recipients_emergency) or '(none)'}")
     print()
-    print(f"  Poll Interval:       {config.poll_interval}s")
-    print(f"  Alert Cooldown:      {config.alert_cooldown}s")
-    print(f"  Recovery Alerts:     {config.recovery_notifications}")
+    print("Thresholds")
+    print(f"  Warning:           {config.temp_warning} C")
+    print(f"  Critical:          {config.temp_critical} C")
+    print(f"  Emergency:         {config.temp_emergency} C")
+    print(f"  Hysteresis:        {config.temp_hysteresis} C")
     print()
-    print(f"  CPU Sensor:          {config.sensor_cpu_enabled}")
-    print(f"  GPU Sensor:          {config.sensor_gpu_enabled}")
-    print(f"  DS18B20 Sensors:     {config.sensor_ds18b20_enabled}")
+    print("Monitoring")
+    print(f"  Poll interval:     {config.poll_interval}s")
+    print(f"  Alert cooldown:    {config.alert_cooldown}s")
+    print(f"  Recovery alerts:   {config.recovery_notifications}")
+    print(f"  Rate of change:    {config.rate_of_change_threshold} C/min")
+    print(f"  Escalation timeout:{config.escalation_timeout}s")
+    print(f"  Daily digest:      {config.daily_digest_enabled} (hour: {config.daily_digest_hour})")
     print()
-    print(f"  Dashboard:           {config.dashboard_enabled}")
-    print(f"  Dashboard Address:   {config.dashboard_host}:{config.dashboard_port}")
-    print(f"  Dry Run:             {config.dry_run}")
+    print("Sensors")
+    print(f"  CPU:               {config.sensor_cpu_enabled}")
+    print(f"  GPU:               {config.sensor_gpu_enabled}")
+    print(f"  DS18B20:           {config.sensor_ds18b20_enabled}")
+    print()
+    print("Dashboard")
+    print(f"  Enabled:           {config.dashboard_enabled}")
+    print(f"  Address:           {config.dashboard_host}:{config.dashboard_port}")
+    print(f"  Auth:              {config.dashboard_auth_enabled}")
+    print(f"  API endpoints:     {config.endpoint_api_enabled}")
+    print(f"  Health endpoint:   {config.endpoint_health_enabled}")
+    print(f"  Metrics endpoint:  {config.endpoint_metrics_enabled}")
+    print()
+    print("Database")
+    print(f"  Enabled:           {config.database_enabled}")
+    # Redact credentials from database URL
+    db_display = config.database_url
+    if "@" in db_display:
+        parts = db_display.split("@")
+        db_display = parts[0].split("://")[0] + "://***@" + parts[1]
+    print(f"  URL:               {db_display}")
+    print()
+    print("Notifications")
+    print(f"  Webhook:           {config.webhook_enabled}")
+    print(f"  Telegram:          {config.telegram_enabled}")
+    print(f"  Pushover:          {config.pushover_enabled}")
+    print(f"  MQTT:              {config.mqtt_enabled}")
+    print()
+    print("Fan Control")
+    print(f"  Enabled:           {config.fan_control_enabled}")
+    print(f"  GPIO pin:          {config.fan_gpio_pin}")
+    print(f"  On threshold:      {config.fan_on_threshold} C")
+    print(f"  Off threshold:     {config.fan_off_threshold} C")
+    print()
+    print(f"Dry Run:             {config.dry_run}")
 
+
+# =============================================================================
+# Helpers
+# =============================================================================
 
 def _get_level(temp: float) -> str:
+    """Determine the alert level string for a given temperature."""
     if temp >= config.temp_emergency:
         return "EMERGENCY"
     if temp >= config.temp_critical:
@@ -235,34 +310,118 @@ def _check_service_enabled() -> None:
         pass
 
 
+# =============================================================================
+# Argument parser
+# =============================================================================
+
 def main() -> None:
     """Parse arguments and dispatch to the appropriate command."""
     parser = argparse.ArgumentParser(
         prog="pi-temp-alerter",
-        description="Raspberry Pi temperature monitoring and alerting system",
+        description=_PROG_DESCRIPTION,
+        epilog=_PROG_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    subparsers = parser.add_subparsers(
+        dest="command",
+        title="commands",
+        description="Use 'python main.py <command> --help' for detailed help on each command.",
+    )
 
     # start
-    subparsers.add_parser("start", help="Start the monitoring daemon")
+    subparsers.add_parser(
+        "start",
+        help="Start the monitoring daemon",
+        description=(
+            "Start the temperature monitoring daemon. Validates configuration,\n"
+            "initialises the database, checks systemd auto-start status, starts\n"
+            "the web dashboard (if enabled), and begins the polling loop.\n"
+            "\n"
+            "The daemon will run until stopped via SIGINT (Ctrl+C) or SIGTERM.\n"
+            "All enabled sensors are polled every POLL_INTERVAL seconds.\n"
+            "Alerts are dispatched via all enabled notification channels."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     # status
-    subparsers.add_parser("status", help="Show current sensor readings")
+    subparsers.add_parser(
+        "status",
+        help="Show current sensor readings",
+        description=(
+            "Read all enabled sensors once and display their current temperature\n"
+            "along with the corresponding alert level (NORMAL, WARNING, CRITICAL,\n"
+            "or EMERGENCY). Useful for quick health checks without starting the\n"
+            "full daemon."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     # history
-    history_parser = subparsers.add_parser("history", help="Show temperature history")
+    history_parser = subparsers.add_parser(
+        "history",
+        help="Display recent temperature history",
+        description=(
+            "Show the most recent temperature readings from the data store.\n"
+            "Uses the database (if enabled) or falls back to CSV files.\n"
+            "\n"
+            "Output includes timestamp, sensor name, and temperature in Celsius."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     history_parser.add_argument(
-        "-n", "--lines", type=int, default=20, help="Number of recent entries to show"
+        "-n", "--lines",
+        type=int,
+        default=20,
+        metavar="COUNT",
+        help="Number of recent entries to display (default: 20)",
     )
 
     # test-email
-    subparsers.add_parser("test-email", help="Send a test email to verify SMTP config")
+    subparsers.add_parser(
+        "test-email",
+        help="Send a test email to verify SMTP configuration",
+        description=(
+            "Send a test email to all configured recipients to verify that\n"
+            "SMTP settings (host, port, TLS, credentials) are correct.\n"
+            "\n"
+            "The test email will be sent to all unique addresses across\n"
+            "WARNING, CRITICAL, and EMERGENCY recipient lists."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     # config
-    subparsers.add_parser("config", help="Display current configuration")
+    subparsers.add_parser(
+        "config",
+        help="Display current configuration (secrets redacted)",
+        description=(
+            "Print all current configuration values sourced from the .env file.\n"
+            "Passwords, tokens, and credentials are redacted in the output.\n"
+            "\n"
+            "Useful for verifying that changes to .env have taken effect and\n"
+            "for debugging configuration issues."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     # update
-    subparsers.add_parser("update", help="Pull latest changes and restart service (requires root)")
+    subparsers.add_parser(
+        "update",
+        help="Pull latest changes and restart service (requires root)",
+        description=(
+            "Perform a self-update by pulling the latest code from git,\n"
+            "reinstalling Python dependencies, and restarting the systemd\n"
+            "service if it is currently running.\n"
+            "\n"
+            "Requires root privileges (use sudo). Uses git pull --ff-only\n"
+            "to ensure a clean fast-forward merge without conflicts.\n"
+            "\n"
+            "If running from /opt/pi-temp-alerter, updates that directory.\n"
+            "Otherwise updates the current working directory."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     args = parser.parse_args()
 
