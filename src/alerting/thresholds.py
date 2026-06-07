@@ -57,38 +57,45 @@ class ThresholdEvaluator:
 
         The new level accounts for hysteresis: a sensor must drop below
         (threshold - hysteresis) before the level is cleared downwards.
+        Uses per-sensor threshold overrides when configured.
         """
         state = self._get_state(sensor_name)
         previous_level = state.current_level
-        new_level = self._compute_level(temperature, previous_level)
+        thresholds = config.get_thresholds(sensor_name)
+        new_level = self._compute_level(temperature, previous_level, thresholds)
         state.current_level = new_level
         return new_level, previous_level
 
-    def _compute_level(self, temp: float, current: AlertLevel) -> AlertLevel:
+    def _compute_level(
+        self, temp: float, current: AlertLevel, thresholds: dict[str, float]
+    ) -> AlertLevel:
         """Determine the alert level with hysteresis applied."""
         hysteresis = config.temp_hysteresis
+        warning = thresholds["warning"]
+        critical = thresholds["critical"]
+        emergency = thresholds["emergency"]
 
         # Escalation (no hysteresis needed going up)
-        if temp >= config.temp_emergency:
+        if temp >= emergency:
             return AlertLevel.EMERGENCY
-        if temp >= config.temp_critical:
+        if temp >= critical:
             return AlertLevel.CRITICAL
-        if temp >= config.temp_warning:
+        if temp >= warning:
             return AlertLevel.WARNING
 
         # De-escalation with hysteresis
         if current == AlertLevel.EMERGENCY:
-            if temp < config.temp_emergency - hysteresis:
-                return self._compute_level(temp, AlertLevel.CRITICAL)
+            if temp < emergency - hysteresis:
+                return self._compute_level(temp, AlertLevel.CRITICAL, thresholds)
             return AlertLevel.EMERGENCY
 
         if current == AlertLevel.CRITICAL:
-            if temp < config.temp_critical - hysteresis:
-                return self._compute_level(temp, AlertLevel.WARNING)
+            if temp < critical - hysteresis:
+                return self._compute_level(temp, AlertLevel.WARNING, thresholds)
             return AlertLevel.CRITICAL
 
         if current == AlertLevel.WARNING:
-            if temp < config.temp_warning - hysteresis:
+            if temp < warning - hysteresis:
                 return AlertLevel.NORMAL
             return AlertLevel.WARNING
 

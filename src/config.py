@@ -89,5 +89,47 @@ class Config:
         # Advanced
         self.dry_run: bool = _bool(os.getenv("DRY_RUN", "false"))
 
+        # Per-sensor threshold overrides (populated dynamically)
+        self.sensor_overrides: dict[str, dict[str, float]] = self._load_sensor_overrides()
+
+    def _load_sensor_overrides(self) -> dict[str, dict[str, float]]:
+        """Load per-sensor threshold overrides from environment variables.
+
+        Looks for patterns like TEMP_WARNING_CPU=65, TEMP_CRITICAL_GPU=75,
+        TEMP_EMERGENCY_DS18B20_28_XXXX=40. Sensor names are normalised to
+        lowercase with hyphens replaced by underscores.
+        """
+        overrides: dict[str, dict[str, float]] = {}
+        prefix_map = {
+            "TEMP_WARNING_": "warning",
+            "TEMP_CRITICAL_": "critical",
+            "TEMP_EMERGENCY_": "emergency",
+        }
+
+        for key, value in os.environ.items():
+            for prefix, level in prefix_map.items():
+                if key.startswith(prefix) and key != prefix.rstrip("_"):
+                    sensor_name = key[len(prefix):].lower().replace("-", "_")
+                    threshold = _float(value, -1.0)
+                    if threshold < 0:
+                        continue
+                    if sensor_name not in overrides:
+                        overrides[sensor_name] = {}
+                    overrides[sensor_name][level] = threshold
+
+        return overrides
+
+    def get_thresholds(self, sensor_name: str) -> dict[str, float]:
+        """Return the effective thresholds for a given sensor.
+
+        Falls back to global thresholds for any level not overridden.
+        """
+        overrides = self.sensor_overrides.get(sensor_name.lower().replace("-", "_"), {})
+        return {
+            "warning": overrides.get("warning", self.temp_warning),
+            "critical": overrides.get("critical", self.temp_critical),
+            "emergency": overrides.get("emergency", self.temp_emergency),
+        }
+
 
 config = Config()
