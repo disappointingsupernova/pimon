@@ -39,10 +39,12 @@ def _get_engine():
     """Create the SQLAlchemy engine from the configured DATABASE_URL.
 
     Defaults to a local SQLite file if no URL is specified.
+    For SQLite, enables WAL journal mode which significantly reduces
+    SD card wear by using sequential writes instead of rewrites.
     """
     url = config.database_url
 
-    # SQLite-specific: disable check_same_thread for multi-threaded Flask usage
+    # SQLite-specific settings for Pi SD card optimisation
     connect_args = {}
     if url.startswith("sqlite"):
         connect_args = {"check_same_thread": False}
@@ -50,9 +52,22 @@ def _get_engine():
     engine = create_engine(
         url,
         connect_args=connect_args,
-        pool_pre_ping=True,  # Reconnect stale connections automatically
+        pool_pre_ping=True,
         echo=(config.log_level.upper() == "DEBUG"),
     )
+
+    # Enable WAL mode for SQLite to reduce SD card write amplification.
+    # WAL uses sequential appends instead of rewriting the journal file.
+    if url.startswith("sqlite"):
+        from sqlalchemy import event
+
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragmas(dbapi_conn, connection_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.close()
+
     return engine
 
 
