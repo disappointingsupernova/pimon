@@ -6,15 +6,26 @@ A comprehensive Raspberry Pi temperature monitoring and alerting system. Monitor
 
 - Multi-sensor support: CPU (thermal_zone), GPU (vcgencmd), DS18B20 (one-wire)
 - Tiered alerting: Warning, Critical, and Emergency thresholds with per-level recipients
+- Per-sensor threshold overrides for different acceptable ranges
 - Hysteresis: Prevents alert flapping when temperature oscillates around a threshold
 - Cooldown: Rate-limits repeated alerts to avoid inbox flooding
 - Recovery notifications: Alerts when temperature returns to normal
-- Web dashboard: Real-time Chart.js graphs with auto-refresh
-- CSV logging: Historical temperature data with configurable rotation
+- Rate-of-change alerting: Detects rapid temperature rises
+- Alert escalation timeout: Auto-escalates if stuck at a level too long
+- Multi-channel notifications: Email, Webhook, Telegram, Pushover, MQTT
+- HTML emails with colour-coded severity and dashboard links
+- Web dashboard: Real-time Chart.js graphs with auto-refresh and optional auth
+- Prometheus /metrics endpoint for Grafana integration
+- System metrics: CPU, memory, disk usage, and throttle state
+- CSV logging with daily rotation and configurable retention
+- Daily digest email with min/max/average statistics
+- GPIO fan control with independent on/off thresholds
 - Systemd integration: Auto-start on boot with security hardening
 - Self-update: Pull latest changes and restart via CLI
 - Dry-run mode: Test alert logic without sending emails
 - Production deployment: Installs to /opt with dedicated service user
+- Startup configuration validation with clear error messages
+- Service auto-start detection with warning alert
 - Fully configurable via a single `.env` file
 
 ## Architecture
@@ -27,11 +38,18 @@ graph TD
     C --> E[GPU Sensor]
     C --> F[DS18B20 Sensors]
     B --> G[Threshold Evaluator]
-    G --> H[Email Sender]
-    B --> I[CSV Logger]
-    A --> J[Flask Dashboard]
-    J --> C
-    J --> K[REST API]
+    G --> H[Notification Dispatcher]
+    H --> I[Email Sender]
+    H --> J[Webhook]
+    H --> K[Telegram]
+    H --> L[Pushover]
+    H --> M[MQTT]
+    B --> N[CSV Logger]
+    B --> O[Fan Control]
+    A --> P[Flask Dashboard]
+    P --> C
+    P --> Q[REST API]
+    P --> R[Prometheus /metrics]
 ```
 
 ## Monitoring Flow
@@ -41,7 +59,7 @@ sequenceDiagram
     participant M as Monitor
     participant S as Sensors
     participant T as Threshold Evaluator
-    participant E as Email Sender
+    participant D as Dispatcher
     participant L as Logger
 
     loop Every poll_interval seconds
@@ -51,10 +69,11 @@ sequenceDiagram
         M->>T: evaluate(sensor, temp)
         T-->>M: (new_level, previous_level)
         alt Level escalated or cooldown elapsed
-            M->>E: send_alert_email()
+            M->>D: dispatch_alert()
+            D->>D: email, webhook, telegram, pushover, mqtt
         end
         alt Recovered to normal
-            M->>E: send_recovery_email()
+            M->>D: dispatch_recovery()
         end
     end
 ```
@@ -65,8 +84,8 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> NORMAL
     NORMAL --> WARNING: temp >= warning
-    WARNING --> CRITICAL: temp >= critical
-    CRITICAL --> EMERGENCY: temp >= emergency
+    WARNING --> CRITICAL: temp >= critical OR escalation timeout
+    CRITICAL --> EMERGENCY: temp >= emergency OR escalation timeout
     EMERGENCY --> CRITICAL: temp < emergency - hysteresis
     CRITICAL --> WARNING: temp < critical - hysteresis
     WARNING --> NORMAL: temp < warning - hysteresis
@@ -232,13 +251,27 @@ All configuration is managed through the `.env` file. Copy `.env.example` to `.e
 | TEMP_EMERGENCY  | float | 80.0    | Emergency threshold in degrees Celsius              |
 | TEMP_HYSTERESIS | float | 3.0     | Degrees below threshold before clearing alert state |
 
+### Per-Sensor Threshold Overrides
+
+Override thresholds for specific sensors using the pattern `TEMP_<LEVEL>_<SENSOR_NAME>`:
+
+```
+TEMP_WARNING_CPU=65
+TEMP_CRITICAL_GPU=75
+TEMP_WARNING_DS18B20_28_0000XXXX=25
+```
+
 ### Monitoring
 
-| Field                  | Type | Default | Description                                      |
-|------------------------|------|---------|--------------------------------------------------|
-| POLL_INTERVAL          | int  | 30      | Seconds between sensor readings                  |
-| ALERT_COOLDOWN         | int  | 300     | Minimum seconds between repeated alerts          |
-| RECOVERY_NOTIFICATIONS | bool | true    | Send email when temperature returns to normal    |
+| Field                      | Type  | Default | Description                                                |
+|----------------------------|-------|---------|------------------------------------------------------------|
+| POLL_INTERVAL              | int   | 30      | Seconds between sensor readings                            |
+| ALERT_COOLDOWN             | int   | 300     | Minimum seconds between repeated alerts                    |
+| RECOVERY_NOTIFICATIONS     | bool  | true    | Send email when temperature returns to normal              |
+| RATE_OF_CHANGE_THRESHOLD   | float | 0       | Alert if rising faster than this (C/min, 0 = disabled)     |
+| ESCALATION_TIMEOUT         | int   | 0       | Seconds before auto-escalating (0 = disabled)              |
+| DAILY_DIGEST_ENABLED       | bool  | false   | Enable daily summary email                                 |
+| DAILY_DIGEST_HOUR          | int   | 7       | Hour (0-23) to send the daily digest                       |
 
 ### Sensors
 
@@ -251,26 +284,70 @@ All configuration is managed through the `.env` file. Copy `.env.example` to `.e
 
 ### Logging
 
-| Field              | Type   | Default | Description                            |
-|--------------------|--------|---------|----------------------------------------|
-| LOG_LEVEL          | string | INFO    | Log level: DEBUG, INFO, WARNING, ERROR |
-| LOG_MAX_SIZE_MB    | int    | 10      | Max log file size before rotation (MB) |
-| LOG_BACKUP_COUNT   | int    | 5       | Number of rotated log files to keep    |
-| CSV_LOGGING_ENABLED| bool   | true    | Enable CSV temperature history logging |
+| Field              | Type   | Default | Description                              |
+|--------------------|--------|---------|------------------------------------------|
+| LOG_LEVEL          | string | INFO    | Log level: DEBUG, INFO, WARNING, ERROR   |
+| LOG_MAX_SIZE_MB    | int    | 10      | Max log file size before rotation (MB)   |
+| LOG_BACKUP_COUNT   | int    | 5       | Number of rotated log files to keep      |
+| CSV_LOGGING_ENABLED| bool   | true    | Enable CSV temperature history logging   |
+| CSV_RETENTION_DAYS | int    | 30      | Days to retain CSV files before pruning  |
 
 ### Dashboard
 
-| Field           | Type   | Default   | Description                          |
-|-----------------|--------|-----------|--------------------------------------|
-| DASHBOARD_ENABLED| bool  | true      | Enable the web dashboard             |
-| DASHBOARD_HOST  | string | 0.0.0.0   | Dashboard bind address               |
-| DASHBOARD_PORT  | int    | 5000      | Dashboard HTTP port                  |
+| Field                  | Type   | Default   | Description                          |
+|------------------------|--------|-----------|--------------------------------------|
+| DASHBOARD_ENABLED      | bool   | true      | Enable the web dashboard             |
+| DASHBOARD_HOST         | string | 0.0.0.0   | Dashboard bind address               |
+| DASHBOARD_PORT         | int    | 5000      | Dashboard HTTP port                  |
+| DASHBOARD_AUTH_ENABLED | bool   | false     | Enable HTTP Basic Auth               |
+| DASHBOARD_USERNAME     | string | admin     | Basic auth username                  |
+| DASHBOARD_PASSWORD     | string | -         | Basic auth password                  |
+
+### Notifications
+
+| Field               | Type   | Default            | Description                          |
+|---------------------|--------|--------------------|--------------------------------------|
+| WEBHOOK_ENABLED     | bool   | false              | Enable generic webhook notifications |
+| WEBHOOK_URL         | string | -                  | URL to POST JSON alerts to           |
+| TELEGRAM_ENABLED    | bool   | false              | Enable Telegram bot notifications    |
+| TELEGRAM_BOT_TOKEN  | string | -                  | Telegram bot API token               |
+| TELEGRAM_CHAT_ID    | string | -                  | Target chat/group ID                 |
+| PUSHOVER_ENABLED    | bool   | false              | Enable Pushover notifications        |
+| PUSHOVER_APP_TOKEN  | string | -                  | Pushover application token           |
+| PUSHOVER_USER_KEY   | string | -                  | Pushover user/group key              |
+| MQTT_ENABLED        | bool   | false              | Enable MQTT publishing               |
+| MQTT_HOST           | string | localhost          | MQTT broker hostname                 |
+| MQTT_PORT           | int    | 1883               | MQTT broker port                     |
+| MQTT_USERNAME       | string | -                  | MQTT authentication username         |
+| MQTT_PASSWORD       | string | -                  | MQTT authentication password         |
+| MQTT_CLIENT_ID      | string | pi-temp-alerter    | MQTT client identifier               |
+| MQTT_TOPIC_PREFIX   | string | pi-temp-alerter    | MQTT topic prefix                    |
+
+### Fan Control
+
+| Field               | Type  | Default | Description                              |
+|---------------------|-------|---------|------------------------------------------|
+| FAN_CONTROL_ENABLED | bool  | false   | Enable GPIO fan control                  |
+| FAN_GPIO_PIN        | int   | 14      | BCM GPIO pin for fan transistor/relay    |
+| FAN_ON_THRESHOLD    | float | 55.0    | Temperature to turn fan on               |
+| FAN_OFF_THRESHOLD   | float | 45.0    | Temperature to turn fan off              |
 
 ### Advanced
 
 | Field    | Type | Default | Description                                  |
 |----------|------|---------|----------------------------------------------|
 | DRY_RUN  | bool | false   | Log alerts without actually sending emails   |
+
+## API Endpoints
+
+| Endpoint           | Method | Description                                      |
+|--------------------|--------|--------------------------------------------------|
+| `/`                | GET    | Web dashboard UI                                 |
+| `/api/current`     | GET    | Current sensor readings and thresholds           |
+| `/api/history`     | GET    | Recent in-memory readings for charting           |
+| `/api/history/csv` | GET    | Last 500 entries from CSV logs                   |
+| `/api/health`      | GET    | System health, uptime, metrics, sensor status    |
+| `/metrics`         | GET    | Prometheus exposition format metrics             |
 
 ## DS18B20 Sensor Setup
 
@@ -320,18 +397,27 @@ Pi-Temperature-Alerter/
 |-- systemd/
 |   `-- pi-temp-alerter.service  # Systemd unit file
 `-- src/
-    |-- config.py            # Configuration loader
-    |-- logger.py            # Logging and CSV setup
+    |-- config.py            # Configuration loader and validation
+    |-- logger.py            # Logging and CSV setup with daily rotation
     |-- monitor.py           # Core monitoring loop
     |-- sensors/
     |   |-- base.py          # Sensor interface
     |   |-- cpu.py           # CPU temperature sensor
     |   |-- gpu.py           # GPU temperature sensor
     |   |-- ds18b20.py       # DS18B20 one-wire sensor
-    |   `-- manager.py       # Sensor orchestration
+    |   |-- manager.py       # Sensor orchestration
+    |   |-- system_metrics.py # CPU/memory/disk/throttle metrics
+    |   `-- fan_control.py   # GPIO fan control
     |-- alerting/
     |   |-- thresholds.py    # Threshold evaluation and hysteresis
-    |   `-- email_sender.py  # SMTP email dispatch
+    |   |-- email_sender.py  # SMTP email dispatch (plain + HTML)
+    |   |-- dispatcher.py    # Multi-channel notification fan-out
+    |   |-- digest.py        # Daily summary email
+    |   `-- notifiers/
+    |       |-- webhook.py   # Generic HTTP webhook
+    |       |-- telegram.py  # Telegram Bot API
+    |       |-- pushover.py  # Pushover push notifications
+    |       `-- mqtt.py      # MQTT publishing
     `-- dashboard/
         |-- app.py           # Flask web application
         `-- templates/
