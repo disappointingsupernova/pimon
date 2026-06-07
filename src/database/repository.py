@@ -25,18 +25,32 @@ logger = logging.getLogger("pi_temp_alerter")
 
 def store_reading(sensor_name: str, temperature_c: float) -> None:
     """Persist a temperature reading to the database."""
+    store_readings_batch([(sensor_name, temperature_c)])
+
+
+def store_readings_batch(readings: list[tuple[str, float]]) -> None:
+    """Persist multiple temperature readings in a single transaction.
+
+    Opens one session, adds all readings, and commits once. Reduces
+    database I/O overhead and SQLite lock contention compared to
+    one commit per reading.
+    """
+    if not readings:
+        return
+
     session = get_session()
     try:
-        reading = TemperatureReading(
-            sensor_name=sensor_name,
-            temperature_c=temperature_c,
-            timestamp=datetime.now(timezone.utc),
-        )
-        session.add(reading)
+        now = datetime.now(timezone.utc)
+        for sensor_name, temperature_c in readings:
+            session.add(TemperatureReading(
+                sensor_name=sensor_name,
+                temperature_c=temperature_c,
+                timestamp=now,
+            ))
         session.commit()
     except Exception as exc:
         session.rollback()
-        logger.error("Failed to store reading: %s", exc)
+        logger.error("Failed to store readings batch: %s", exc)
     finally:
         session.close()
 

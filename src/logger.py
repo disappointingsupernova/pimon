@@ -60,20 +60,29 @@ def log_temperature_csv(sensor: str, temperature: float) -> None:
     """Append a temperature reading to today's CSV file."""
     if not config.csv_logging_enabled:
         return
+    log_temperatures_csv_batch([(sensor, temperature)])
+
+
+def log_temperatures_csv_batch(readings: list[tuple[str, float]]) -> None:
+    """Append multiple temperature readings to today's CSV file in one I/O operation.
+
+    Opens the file once, writes all readings, then closes. Reduces SD card
+    wear and I/O overhead compared to opening per individual reading.
+    """
+    if not config.csv_logging_enabled or not readings:
+        return
 
     _DATA_DIR.mkdir(exist_ok=True)
     csv_path = _get_csv_path()
     file_exists = csv_path.exists()
+    now = datetime.now(timezone.utc).isoformat()
 
     with open(csv_path, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow(["timestamp", "sensor", "temperature_c"])
-        writer.writerow([
-            datetime.now(timezone.utc).isoformat(),
-            sensor,
-            f"{temperature:.1f}",
-        ])
+        for sensor, temperature in readings:
+            writer.writerow([now, sensor, f"{temperature:.1f}"])
 
 
 def prune_old_csv_files() -> int:

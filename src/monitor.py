@@ -13,7 +13,7 @@ from src.alerting.dispatcher import dispatch_alert, dispatch_recovery
 from src.alerting.thresholds import AlertLevel, ThresholdEvaluator
 from src.config import config
 from src.dashboard.app import record_reading
-from src.logger import log_temperature_csv, prune_old_csv_files
+from src.logger import log_temperatures_csv_batch, prune_old_csv_files
 from src.sensors.base import SensorReading
 from src.sensors.manager import SensorManager
 
@@ -31,6 +31,23 @@ class Monitor:
         self._last_readings: dict[str, tuple[float, datetime]] = {}
         self._roc_alerted: dict[str, datetime] = {}
         self._last_digest_date: date | None = None
+
+        # Pre-resolve optional module references to avoid repeated imports in hot loop
+        self._store_readings_batch = None
+        self._mqtt_publish = None
+        self._fan_update = None
+
+        if config.database_enabled:
+            from src.database.repository import store_readings_batch
+            self._store_readings_batch = store_readings_batch
+
+        if config.mqtt_enabled:
+            from src.alerting.notifiers.mqtt import publish_reading
+            self._mqtt_publish = publish_reading
+
+        if config.fan_control_enabled:
+            from src.sensors.fan_control import update_fan
+            self._fan_update = update_fan
 
     def start(self) -> None:
         """Begin the monitoring loop. Blocks until stopped."""
@@ -82,50 +99,57 @@ class Monitor:
         self.stop()
 
     def _poll(self) -> None:
-        """Perform a single polling cycle across all sensors."""
+        """Perform a single polling cycle across all sensors.
+
+        Reads all sensors first, then batches I/O operations (CSV, database,
+        MQTT) to minimise file handles and network round-trips per cycle.
+        """
         readings = self._sensor_manager.read_all()
 
+        # Collect successful readings for batched I/O
+        successful: list[tuple[str, float]] = []
+
         for reading in readings:
-            self._process_reading(reading)
+            if not reading.available:
+                logger.warning(
+                    "Sensor %s unavailable: %s", reading.sensor_name, reading.error
+                )
+                continue
+
+            logger.debug(
+                "Sensor %s: %.1f C", reading.sensor_name, reading.temperature_c
+            )
+            successful.append((reading.sensor_name, reading.temperature_c))
+
+            # Update dashboard in-memory buffer
+            record_reading(reading.sensor_name, reading.temperature_c)
+
+            # Fan control (needs per-reading evaluation)
+            if self._fan_update:
+                self._fan_update(reading.temperature_c)
+
+            # Rate-of-change check
+            self._check_rate_of_change(reading)
+
+            # Threshold evaluation and alerting
+            self._evaluate_and_alert(reading)
+
+        # Batch I/O: CSV (one file open), database (one commit), MQTT
+        if successful:
+            log_temperatures_csv_batch(successful)
+
+            if self._store_readings_batch:
+                self._store_readings_batch(successful)
+
+            if self._mqtt_publish:
+                for sensor_name, temp in successful:
+                    self._mqtt_publish(sensor_name, temp)
 
         # Send daily digest once per day
         self._check_daily_digest()
 
-    def _process_reading(self, reading: SensorReading) -> None:
-        """Process a single sensor reading: log, evaluate, and alert."""
-        if not reading.available:
-            logger.warning(
-                "Sensor %s unavailable: %s", reading.sensor_name, reading.error
-            )
-            return
-
-        logger.debug(
-            "Sensor %s: %.1f C", reading.sensor_name, reading.temperature_c
-        )
-
-        # Log to CSV and dashboard buffer
-        log_temperature_csv(reading.sensor_name, reading.temperature_c)
-        record_reading(reading.sensor_name, reading.temperature_c)
-
-        # Persist to database
-        if config.database_enabled:
-            from src.database.repository import store_reading
-            store_reading(reading.sensor_name, reading.temperature_c)
-
-        # Publish to MQTT
-        if config.mqtt_enabled:
-            from src.alerting.notifiers.mqtt import publish_reading
-            publish_reading(reading.sensor_name, reading.temperature_c)
-
-        # Fan control
-        if config.fan_control_enabled:
-            from src.sensors.fan_control import update_fan
-            update_fan(reading.temperature_c)
-
-        # Rate-of-change check
-        self._check_rate_of_change(reading)
-
-        # Evaluate thresholds
+    def _evaluate_and_alert(self, reading: SensorReading) -> None:
+        """Evaluate thresholds and dispatch alerts/recovery for a reading."""
         new_level, previous_level = self._evaluator.evaluate(
             reading.sensor_name, reading.temperature_c
         )
@@ -134,7 +158,6 @@ class Monitor:
         if new_level != AlertLevel.NORMAL and new_level != previous_level:
             self._handle_alert(reading, new_level)
         elif new_level != AlertLevel.NORMAL:
-            # Same level - check cooldown for repeated alerts
             state = self._evaluator.get_state(reading.sensor_name)
             if state.can_send_alert(new_level):
                 self._handle_alert(reading, new_level)
