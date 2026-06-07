@@ -106,6 +106,7 @@ class Config:
         # Notifications
         self.webhook_enabled: bool = _bool(os.getenv("WEBHOOK_ENABLED", "false"))
         self.webhook_url: str = os.getenv("WEBHOOK_URL", "")
+        self.webhook_verify_ssl: bool = _bool(os.getenv("WEBHOOK_VERIFY_SSL", "true"))
         self.telegram_enabled: bool = _bool(os.getenv("TELEGRAM_ENABLED", "false"))
         self.telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
         self.telegram_chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")

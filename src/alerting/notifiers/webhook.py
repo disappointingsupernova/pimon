@@ -1,10 +1,12 @@
 """Generic webhook notification backend.
 
 Sends a JSON POST to a configurable URL on alert and recovery events.
+Supports optional SSL verification bypass for internal self-signed endpoints.
 """
 
 import json
 import logging
+import ssl
 import urllib.request
 import urllib.error
 
@@ -31,7 +33,15 @@ def send_webhook(payload: dict) -> bool:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+
+        # Allow disabling SSL verification for internal self-signed endpoints
+        ssl_context = None
+        if config.webhook_verify_ssl is False:
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+
+        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as resp:
             if resp.status < 300:
                 logger.info("Webhook sent to %s (status %d)", url, resp.status)
                 return True
