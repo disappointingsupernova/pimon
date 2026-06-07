@@ -182,6 +182,18 @@ else
     info "Service already enabled"
 fi
 
+# Install CLI shortcut symlink to /usr/local/bin
+CLI_LINK="/usr/local/bin/${APP_NAME}"
+CLI_TARGET="${INSTALL_DIR}/venv/bin/python ${INSTALL_DIR}/main.py"
+
+# Create a wrapper script (symlinks don't work well with venv python paths)
+info "Installing CLI shortcut: ${CLI_LINK}"
+cat > "${CLI_LINK}" <<EOF
+#!/usr/bin/env bash
+exec "${INSTALL_DIR}/venv/bin/python" "${INSTALL_DIR}/main.py" "\$@"
+EOF
+chmod 755 "${CLI_LINK}"
+
 # =============================================================================
 # Done
 # =============================================================================

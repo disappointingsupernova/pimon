@@ -44,6 +44,13 @@ if systemctl is-enabled --quiet "${APP_NAME}" 2>/dev/null; then
     systemctl disable "${APP_NAME}"
 fi
 
+# Remove CLI shortcut
+CLI_LINK="/usr/local/bin/${APP_NAME}"
+if [[ -f "${CLI_LINK}" ]]; then
+    info "Removing CLI shortcut: ${CLI_LINK}"
+    rm -f "${CLI_LINK}"
+fi
+
 # Remove service file
 if [[ -f "${SERVICE_FILE}" ]]; then
     info "Removing systemd service file"
