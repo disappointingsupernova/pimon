@@ -84,6 +84,8 @@ def api_history():
 @app.route("/api/health")
 def api_health():
     """Return system health status for external monitoring."""
+    from src.sensors.system_metrics import collect_metrics
+
     uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
 
     sensor_status = []
@@ -97,11 +99,24 @@ def api_health():
                 "error": reading.error,
             })
 
+    metrics = collect_metrics()
+
     return jsonify({
         "status": "healthy",
         "uptime_seconds": round(uptime, 1),
         "last_poll": _last_poll_time.isoformat() if _last_poll_time else None,
         "sensors": sensor_status,
+        "system": {
+            "cpu_percent": metrics.cpu_percent,
+            "memory_percent": metrics.memory_percent,
+            "memory_used_mb": metrics.memory_used_mb,
+            "memory_total_mb": metrics.memory_total_mb,
+            "disk_percent": metrics.disk_percent,
+            "disk_used_gb": metrics.disk_used_gb,
+            "disk_total_gb": metrics.disk_total_gb,
+            "throttled": metrics.throttled,
+            "throttle_flags": metrics.throttle_flags,
+        },
         "config": {
             "poll_interval": config.poll_interval,
             "alert_cooldown": config.alert_cooldown,
