@@ -110,6 +110,20 @@
         // System metrics history (in-memory for the chart)
         const sysHistory = { labels: [], cpu: [], mem: [] };
 
+        // Convert a UTC ISO timestamp to the browser's local time for display
+        function formatTime(isoString, short) {
+            // Ensure the timestamp is treated as UTC if no timezone indicator present
+            let ts = isoString;
+            if (!ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
+                ts += 'Z';
+            }
+            const d = new Date(ts);
+            if (short) {
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
         function getLevel(temp) {
             if (temp >= thresholds.emergency) return 'emergency';
             if (temp >= thresholds.critical) return 'critical';
@@ -248,10 +262,7 @@
                     let i = 0;
 
                     for (const [sensor, readings] of Object.entries(data.sensors)) {
-                        const times = readings.map(r => {
-                            const d = new Date(r.timestamp);
-                            return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                        });
+                        const times = readings.map(r => formatTime(r.timestamp, currentHours <= 12));
                         const temps = readings.map(r => r.temperature_c);
 
                         if (times.length > labels.length) labels = times;
