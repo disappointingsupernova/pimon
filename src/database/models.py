@@ -7,6 +7,7 @@ via the DATABASE_URL connection string.
 
 import logging
 from datetime import datetime, timezone
+from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy import (
     Boolean,
@@ -73,6 +74,22 @@ def get_session() -> Session:
     return _SessionLocal()
 
 
+def _redact_url(url: str) -> str:
+    """Redact credentials from a database URL for safe logging."""
+    try:
+        parsed = urlparse(url)
+        if parsed.password:
+            # Replace password with *** in the netloc
+            redacted_netloc = f"{parsed.username}:***@{parsed.hostname}"
+            if parsed.port:
+                redacted_netloc += f":{parsed.port}"
+            return urlunparse(parsed._replace(netloc=redacted_netloc))
+        return url
+    except Exception:
+        # If parsing fails, return the backend type only
+        return url.split("://")[0] + "://***" if "://" in url else url
+
+
 def init_db() -> None:
     """Create all tables if they do not exist.
 
@@ -82,7 +99,7 @@ def init_db() -> None:
     if _engine is None:
         _engine = _get_engine()
     Base.metadata.create_all(_engine)
-    logger.info("Database initialised: %s", config.database_url.split("@")[-1] if "@" in config.database_url else config.database_url)
+    logger.info("Database initialised: %s", _redact_url(config.database_url))
 
 
 # ============================================================================
