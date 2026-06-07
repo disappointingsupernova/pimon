@@ -24,6 +24,18 @@ def _cmd_start(args: argparse.Namespace) -> None:
 
     setup_logging()
 
+    # Validate configuration before starting
+    errors = config.validate()
+    if errors:
+        print("Configuration errors detected:")
+        for err in errors:
+            print(f"  - {err}")
+        print("\nFix these issues in your .env file before starting.")
+        sys.exit(1)
+
+    # Warn if systemd service is not enabled for auto-start
+    _check_service_enabled()
+
     sensor_manager = SensorManager()
     init_dashboard(sensor_manager)
 
@@ -177,6 +189,45 @@ def _get_level(temp: float) -> str:
     if temp >= config.temp_warning:
         return "WARNING"
     return "NORMAL"
+
+
+def _check_service_enabled() -> None:
+    """Warn if the systemd service is not enabled for auto-start."""
+    import logging
+
+    logger = logging.getLogger("pi_temp_alerter")
+
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-enabled", "--quiet", "pi-temp-alerter"],
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            msg = (
+                "The pi-temp-alerter systemd service is not enabled for auto-start. "
+                "Run 'sudo systemctl enable pi-temp-alerter' to start on boot."
+            )
+            logger.warning(msg)
+            print(f"WARNING: {msg}")
+
+            # Send a one-off advisory email if SMTP is configured
+            from src.alerting.email_sender import _send
+            _send(
+                list(set(
+                    config.recipients_warning
+                    + config.recipients_critical
+                    + config.recipients_emergency
+                )),
+                "[Pi Alerter] Service not enabled for auto-start",
+                "The pi-temp-alerter service is not enabled for automatic startup.\n"
+                "\n"
+                "If the Pi reboots, monitoring will not resume automatically.\n"
+                "To fix this, run:\n"
+                "  sudo systemctl enable pi-temp-alerter\n",
+            )
+    except (OSError, FileNotFoundError):
+        # systemctl not available (development environment) - skip check
+        pass
 
 
 def main() -> None:

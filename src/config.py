@@ -92,6 +92,69 @@ class Config:
         # Per-sensor threshold overrides (populated dynamically)
         self.sensor_overrides: dict[str, dict[str, float]] = self._load_sensor_overrides()
 
+    def validate(self) -> list[str]:
+        """Validate configuration and return a list of error messages.
+
+        Returns an empty list if configuration is valid.
+        """
+        errors: list[str] = []
+
+        # SMTP validation
+        if not self.smtp_host:
+            errors.append("SMTP_HOST is not set")
+        if not self.email_from:
+            errors.append("EMAIL_FROM is not set")
+        if not self.smtp_username:
+            errors.append("SMTP_USERNAME is not set")
+        if not self.smtp_password:
+            errors.append("SMTP_PASSWORD is not set")
+
+        # Recipient validation
+        all_recipients = (
+            self.recipients_warning
+            + self.recipients_critical
+            + self.recipients_emergency
+        )
+        if not all_recipients:
+            errors.append("No email recipients configured at any level")
+
+        # Threshold ordering
+        if not (self.temp_warning < self.temp_critical < self.temp_emergency):
+            errors.append(
+                f"Thresholds must be in ascending order: "
+                f"warning ({self.temp_warning}) < critical ({self.temp_critical}) "
+                f"< emergency ({self.temp_emergency})"
+            )
+
+        # Hysteresis sanity
+        if self.temp_hysteresis <= 0:
+            errors.append("TEMP_HYSTERESIS must be positive")
+        if self.temp_hysteresis >= self.temp_warning:
+            errors.append("TEMP_HYSTERESIS must be less than TEMP_WARNING")
+
+        # Monitoring intervals
+        if self.poll_interval <= 0:
+            errors.append("POLL_INTERVAL must be positive")
+        if self.alert_cooldown < 0:
+            errors.append("ALERT_COOLDOWN must be non-negative")
+
+        # Sensor check
+        if not (self.sensor_cpu_enabled or self.sensor_gpu_enabled or self.sensor_ds18b20_enabled):
+            errors.append("At least one sensor must be enabled")
+
+        # Per-sensor override ordering
+        for sensor, overrides in self.sensor_overrides.items():
+            w = overrides.get("warning", self.temp_warning)
+            c = overrides.get("critical", self.temp_critical)
+            e = overrides.get("emergency", self.temp_emergency)
+            if not (w < c < e):
+                errors.append(
+                    f"Per-sensor thresholds for '{sensor}' must be in ascending order: "
+                    f"warning ({w}) < critical ({c}) < emergency ({e})"
+                )
+
+        return errors
+
     def _load_sensor_overrides(self) -> dict[str, dict[str, float]]:
         """Load per-sensor threshold overrides from environment variables.
 
