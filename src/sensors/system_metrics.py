@@ -28,6 +28,11 @@ def collect_metrics() -> SystemMetrics:
     """Collect current system metrics from /proc and vcgencmd."""
     mem = _memory_usage()
     disk = _disk_usage()
+
+    # Read throttle flags once and derive the boolean from it
+    flags = _throttle_flags()
+    throttled = _parse_throttled(flags)
+
     return SystemMetrics(
         cpu_percent=_cpu_percent(),
         memory_percent=mem[0],
@@ -36,8 +41,8 @@ def collect_metrics() -> SystemMetrics:
         disk_percent=disk[0],
         disk_used_gb=disk[1],
         disk_total_gb=disk[2],
-        throttled=_is_throttled(),
-        throttle_flags=_throttle_flags(),
+        throttled=throttled,
+        throttle_flags=flags,
     )
 
 
@@ -106,12 +111,16 @@ def _throttle_flags() -> str:
         return "unknown"
 
 
-def _is_throttled() -> bool:
-    """Check if the Pi is currently throttled."""
-    flags = _throttle_flags()
+def _parse_throttled(flags: str) -> bool:
+    """Parse the throttle flags string into a boolean."""
     if flags == "unknown":
         return False
     try:
         return int(flags, 16) != 0
     except ValueError:
         return False
+
+
+def _is_throttled() -> bool:
+    """Check if the Pi is currently throttled."""
+    return _parse_throttled(_throttle_flags())
