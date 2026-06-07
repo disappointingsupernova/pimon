@@ -162,20 +162,26 @@ def api_health():
 
 @app.route("/api/history/csv")
 def api_history_csv():
-    """Return the last 500 entries from recent CSV logs."""
+    """Return the last 500 entries from recent CSV logs.
+
+    Uses a bounded deque to avoid loading the entire file into memory.
+    CSV data is already in chronological order so no sorting is needed.
+    """
     if not config.endpoint_api_enabled:
         return Response("Endpoint disabled.", 404)
-    entries = []
+
+    # Use a deque to retain only the last 500 rows in memory
+    tail = deque(maxlen=500)
     for days_ago in range(2):
         day = date.today() - timedelta(days=days_ago)
         csv_path = _DATA_DIR / f"temperature_{day.isoformat()}.csv"
         if csv_path.exists():
             with open(csv_path, "r") as f:
                 reader = csv.DictReader(f)
-                entries.extend(reader)
+                for row in reader:
+                    tail.append(row)
 
-    entries.sort(key=lambda r: r.get("timestamp", ""))
-    return jsonify({"entries": entries[-500:]})
+    return jsonify({"entries": list(tail)})
 
 
 @app.route("/metrics")
