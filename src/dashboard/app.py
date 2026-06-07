@@ -22,6 +22,8 @@ app = Flask(__name__, template_folder=str(_TEMPLATE_DIR))
 # In-memory buffer for recent readings (last 100 per sensor)
 _recent_readings: dict[str, deque] = {}
 _sensor_manager: SensorManager | None = None
+_start_time: datetime = datetime.now(timezone.utc)
+_last_poll_time: datetime | None = None
 
 
 def init_dashboard(sensor_manager: SensorManager) -> None:
@@ -32,6 +34,8 @@ def init_dashboard(sensor_manager: SensorManager) -> None:
 
 def record_reading(sensor_name: str, temperature: float) -> None:
     """Store a reading in the in-memory buffer for the dashboard."""
+    global _last_poll_time
+    _last_poll_time = datetime.now(timezone.utc)
     if sensor_name not in _recent_readings:
         _recent_readings[sensor_name] = deque(maxlen=100)
     _recent_readings[sensor_name].append({
@@ -75,6 +79,35 @@ def api_current():
 def api_history():
     """Return recent in-memory readings for charting."""
     return jsonify(_recent_readings)
+
+
+@app.route("/api/health")
+def api_health():
+    """Return system health status for external monitoring."""
+    uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
+
+    sensor_status = []
+    if _sensor_manager:
+        for sensor in _sensor_manager.sensors:
+            reading = sensor.read()
+            sensor_status.append({
+                "sensor": reading.sensor_name,
+                "available": reading.available,
+                "temperature_c": reading.temperature_c if reading.available else None,
+                "error": reading.error,
+            })
+
+    return jsonify({
+        "status": "healthy",
+        "uptime_seconds": round(uptime, 1),
+        "last_poll": _last_poll_time.isoformat() if _last_poll_time else None,
+        "sensors": sensor_status,
+        "config": {
+            "poll_interval": config.poll_interval,
+            "alert_cooldown": config.alert_cooldown,
+            "dry_run": config.dry_run,
+        },
+    })
 
 
 @app.route("/api/history/csv")
