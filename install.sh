@@ -111,11 +111,17 @@ else
 fi
 
 # Create or update the virtual environment
-if [[ ! -d "${INSTALL_DIR}/venv" ]]; then
+# Verify existing venv is functional (may be broken from a failed install)
+if [[ -d "${INSTALL_DIR}/venv" ]] && [[ -x "${INSTALL_DIR}/venv/bin/python" ]]; then
+    info "Virtual environment already exists, updating"
+else
+    # Remove broken venv if it exists but is non-functional
+    if [[ -d "${INSTALL_DIR}/venv" ]]; then
+        warn "Existing virtual environment is broken, recreating"
+        rm -rf "${INSTALL_DIR}/venv"
+    fi
     info "Creating Python virtual environment"
     python3 -m venv "${INSTALL_DIR}/venv"
-else
-    info "Virtual environment already exists, updating"
 fi
 
 info "Installing Python dependencies"
