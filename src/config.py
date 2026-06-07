@@ -69,6 +69,8 @@ class Config:
         self.recovery_notifications: bool = _bool(os.getenv("RECOVERY_NOTIFICATIONS", "true"))
         self.rate_of_change_threshold: float = _float(os.getenv("RATE_OF_CHANGE_THRESHOLD"), 0.0)
         self.escalation_timeout: int = _int(os.getenv("ESCALATION_TIMEOUT"), 0)
+        self.daily_digest_enabled: bool = _bool(os.getenv("DAILY_DIGEST_ENABLED", "false"))
+        self.daily_digest_hour: int = _int(os.getenv("DAILY_DIGEST_HOUR"), 7)
 
         # Sensors
         self.sensor_cpu_enabled: bool = _bool(os.getenv("SENSOR_CPU_ENABLED", "true"))

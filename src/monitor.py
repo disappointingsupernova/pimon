@@ -7,7 +7,7 @@ alerts with cooldown and hysteresis support.
 import logging
 import signal
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from src.alerting.dispatcher import dispatch_alert, dispatch_recovery
 from src.alerting.thresholds import AlertLevel, ThresholdEvaluator
@@ -30,6 +30,7 @@ class Monitor:
         self._start_time: datetime | None = None
         self._last_readings: dict[str, tuple[float, datetime]] = {}
         self._roc_alerted: dict[str, datetime] = {}
+        self._last_digest_date: date | None = None
 
     def start(self) -> None:
         """Begin the monitoring loop. Blocks until stopped."""
@@ -86,6 +87,9 @@ class Monitor:
 
         for reading in readings:
             self._process_reading(reading)
+
+        # Send daily digest once per day
+        self._check_daily_digest()
 
     def _process_reading(self, reading: SensorReading) -> None:
         """Process a single sensor reading: log, evaluate, and alert."""
@@ -199,3 +203,23 @@ class Monitor:
                         self._roc_alerted[sensor] = now
 
         self._last_readings[sensor] = (reading.temperature_c, now)
+
+    def _check_daily_digest(self) -> None:
+        """Send the daily digest email if the day has rolled over."""
+        if not config.daily_digest_enabled:
+            return
+
+        today = date.today()
+        if self._last_digest_date == today:
+            return
+
+        # Only send after the configured hour
+        now = datetime.now()
+        if now.hour < config.daily_digest_hour:
+            return
+
+        self._last_digest_date = today
+
+        from src.alerting.digest import send_daily_digest
+        logger.info("Sending daily digest")
+        send_daily_digest()
