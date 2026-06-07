@@ -1,0 +1,22 @@
+[Unit]
+Description=Pi Temperature Alerter - System health monitoring
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/pi-temperature-alerter
+ExecStart=/home/pi/pi-temperature-alerter/venv/bin/python main.py start
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/pi/pi-temperature-alerter/logs /home/pi/pi-temperature-alerter/data
+
+[Install]
+WantedBy=multi-user.target
