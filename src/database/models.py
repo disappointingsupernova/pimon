@@ -85,6 +85,7 @@ def get_session() -> Session:
     global _engine, _SessionLocal
     if _engine is None:
         _engine = _get_engine()
+    if _SessionLocal is None:
         _SessionLocal = sessionmaker(bind=_engine)
     return _SessionLocal()
 
@@ -109,8 +110,17 @@ def init_db() -> None:
     """Create all tables if they do not exist.
 
     Safe to call multiple times - will not drop or alter existing tables.
+    Ensures the data directory exists for SQLite databases.
     """
     global _engine
+
+    # Ensure the data directory exists for SQLite
+    if config.database_url.startswith("sqlite"):
+        from pathlib import Path
+        # Extract file path from sqlite:///path/to/file.db
+        db_path = config.database_url.replace("sqlite:///", "")
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
     if _engine is None:
         _engine = _get_engine()
     Base.metadata.create_all(_engine)
