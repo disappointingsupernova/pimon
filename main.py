@@ -256,6 +256,40 @@ def _cmd_config(_args: argparse.Namespace) -> None:
     print(f"Dry Run:             {config.dry_run}")
 
 
+def _cmd_migrate_db(args: argparse.Namespace) -> None:
+    """Migrate all data from one database backend to another."""
+    from src.database.migrate import migrate_database
+    from src.logger import setup_logging
+
+    setup_logging()
+
+    source_url = args.source or config.database_url
+    target_url = args.target
+
+    print("Database Migration")
+    print("=" * 50)
+    print(f"  Source: {_redact_db_url(source_url)}")
+    print(f"  Target: {_redact_db_url(target_url)}")
+    print()
+
+    # Safety confirmation
+    confirm = input("Proceed with migration? [y/N] ").strip().lower()
+    if confirm != "y":
+        print("Migration cancelled.")
+        sys.exit(0)
+
+    print()
+    success = migrate_database(source_url, target_url)
+
+    if success:
+        print("\nMigration complete.")
+        print(f"\nTo switch to the new database, update DATABASE_URL in your .env:")
+        print(f"  DATABASE_URL={target_url}")
+    else:
+        print("\nMigration failed. Check logs for details.")
+        sys.exit(1)
+
+
 # =============================================================================
 # Helpers
 # =============================================================================
@@ -269,6 +303,14 @@ def _get_level(temp: float) -> str:
     if temp >= config.temp_warning:
         return "WARNING"
     return "NORMAL"
+
+
+def _redact_db_url(url: str) -> str:
+    """Redact credentials from a database URL for safe display."""
+    if "@" in url:
+        parts = url.split("@")
+        return parts[0].split("://")[0] + "://***@" + parts[1]
+    return url
 
 
 def _check_service_enabled() -> None:
@@ -423,6 +465,48 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # migrate-db
+    migrate_parser = subparsers.add_parser(
+        "migrate-db",
+        help="Migrate data between database backends",
+        description=(
+            "Copy all data from one database to another. Useful for migrating\n"
+            "from the default SQLite to a hosted MySQL or PostgreSQL instance,\n"
+            "or between any two supported database backends.\n"
+            "\n"
+            "The source defaults to the currently configured DATABASE_URL.\n"
+            "The destination must be provided via --target.\n"
+            "\n"
+            "Tables are created automatically on the target if they do not exist.\n"
+            "Existing data in the target is preserved (records are appended).\n"
+            "\n"
+            "Examples:\n"
+            "  # SQLite to PostgreSQL:\n"
+            "  python main.py migrate-db --target postgresql+psycopg2://user:pass@host/db\n"
+            "\n"
+            "  # SQLite to MySQL:\n"
+            "  python main.py migrate-db --target mysql+pymysql://user:pass@host/db\n"
+            "\n"
+            "  # Custom source (e.g. old SQLite file):\n"
+            "  python main.py migrate-db --source sqlite:///data/old.db --target postgresql://..."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    migrate_parser.add_argument(
+        "--source",
+        type=str,
+        default=None,
+        metavar="URL",
+        help="Source database URL (default: current DATABASE_URL from .env)",
+    )
+    migrate_parser.add_argument(
+        "--target",
+        type=str,
+        required=True,
+        metavar="URL",
+        help="Target database URL to migrate data into",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -436,6 +520,7 @@ def main() -> None:
         "test-email": _cmd_test_email,
         "config": _cmd_config,
         "update": _cmd_update,
+        "migrate-db": _cmd_migrate_db,
     }
     commands[args.command](args)
 
