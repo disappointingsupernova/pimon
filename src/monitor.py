@@ -112,6 +112,11 @@ class Monitor:
             from src.alerting.notifiers.mqtt import publish_reading
             publish_reading(reading.sensor_name, reading.temperature_c)
 
+        # Fan control
+        if config.fan_control_enabled:
+            from src.sensors.fan_control import update_fan
+            update_fan(reading.temperature_c)
+
         # Rate-of-change check
         self._check_rate_of_change(reading)
 

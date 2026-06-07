@@ -113,6 +113,12 @@ class Config:
         # Advanced
         self.dry_run: bool = _bool(os.getenv("DRY_RUN", "false"))
 
+        # Fan control
+        self.fan_control_enabled: bool = _bool(os.getenv("FAN_CONTROL_ENABLED", "false"))
+        self.fan_gpio_pin: int = _int(os.getenv("FAN_GPIO_PIN"), 14)
+        self.fan_on_threshold: float = _float(os.getenv("FAN_ON_THRESHOLD"), 55.0)
+        self.fan_off_threshold: float = _float(os.getenv("FAN_OFF_THRESHOLD"), 45.0)
+
         # Per-sensor threshold overrides (populated dynamically)
         self.sensor_overrides: dict[str, dict[str, float]] = self._load_sensor_overrides()
 
