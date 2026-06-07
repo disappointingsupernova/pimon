@@ -141,7 +141,7 @@ def _cmd_test_email(_args: argparse.Namespace) -> None:
 
 
 def _cmd_update(_args: argparse.Namespace) -> None:
-    """Pull latest changes from git and restart the systemd service."""
+    """Pull latest changes from git, reinstall, and restart the service."""
     import os
 
     if os.geteuid() != 0:
@@ -164,15 +164,27 @@ def _cmd_update(_args: argparse.Namespace) -> None:
 
     print(result.stdout.strip())
 
-    # Reinstall dependencies
-    venv_pip = app_dir / "venv" / "bin" / "pip"
-    if venv_pip.exists():
-        print("Updating dependencies...")
-        subprocess.run(
-            [str(venv_pip), "install", "-r", "requirements.txt", "--quiet"],
+    # Re-run install.sh to update dependencies, service file, and permissions
+    install_script = app_dir / "install.sh"
+    if install_script.exists():
+        print("Running install.sh to update service file and dependencies...")
+        result = subprocess.run(
+            ["bash", str(install_script)],
             cwd=str(app_dir),
-            check=True,
         )
+        if result.returncode != 0:
+            print("install.sh failed. Check output above.")
+            sys.exit(1)
+    else:
+        # Fallback if install.sh is missing: just update pip deps
+        venv_pip = app_dir / "venv" / "bin" / "pip"
+        if venv_pip.exists():
+            print("Updating dependencies...")
+            subprocess.run(
+                [str(venv_pip), "install", "-r", "requirements.txt", "--quiet"],
+                cwd=str(app_dir),
+                check=True,
+            )
 
     # Restart service if active
     svc_check = subprocess.run(
