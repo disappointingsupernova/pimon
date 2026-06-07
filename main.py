@@ -123,6 +123,50 @@ def _cmd_history(args: argparse.Namespace) -> None:
         print(f"{row['timestamp']:<28} {row['sensor']:<20} {row['temperature_c']} C")
 
 
+def _cmd_logs(args: argparse.Namespace) -> None:
+    """Display recent application log entries."""
+    log_file = _APP_DIR / "logs" / "alerter.log"
+    if not log_file.exists():
+        print("No log file found. Start monitoring to generate logs.")
+        sys.exit(1)
+
+    # Read the last N lines efficiently
+    lines = []
+    try:
+        with open(log_file, "r") as f:
+            lines = f.readlines()
+    except PermissionError:
+        print(f"Permission denied reading {log_file}")
+        print("Try: sudo pi-temp-alerter logs")
+        sys.exit(1)
+
+    count = args.lines
+    tail = lines[-count:] if len(lines) > count else lines
+
+    if not tail:
+        print("Log file is empty.")
+        sys.exit(1)
+
+    for line in tail:
+        print(line, end="")
+
+    if args.follow:
+        import time
+        print(f"\n--- Following {log_file} (Ctrl+C to stop) ---\n")
+        try:
+            with open(log_file, "r") as f:
+                # Seek to end
+                f.seek(0, 2)
+                while True:
+                    line = f.readline()
+                    if line:
+                        print(line, end="")
+                    else:
+                        time.sleep(0.5)
+        except KeyboardInterrupt:
+            print("\nStopped.")
+
+
 def _cmd_test_email(_args: argparse.Namespace) -> None:
     """Send a test email to verify SMTP configuration is working."""
     from src.alerting.email_sender import send_test_email
@@ -435,6 +479,32 @@ def main() -> None:
         help="Number of recent entries to display (default: 20)",
     )
 
+    # logs
+    logs_parser = subparsers.add_parser(
+        "logs",
+        help="View application log output",
+        description=(
+            "Display recent entries from the application log file.\n"
+            "Use -f/--follow to tail the log in real time (like tail -f).\n"
+            "\n"
+            "Useful for checking startup messages, alert dispatches,\n"
+            "sensor errors, and other runtime events."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    logs_parser.add_argument(
+        "-n", "--lines",
+        type=int,
+        default=50,
+        metavar="COUNT",
+        help="Number of recent log lines to display (default: 50)",
+    )
+    logs_parser.add_argument(
+        "-f", "--follow",
+        action="store_true",
+        help="Follow the log in real time (like tail -f)",
+    )
+
     # test-email
     subparsers.add_parser(
         "test-email",
@@ -533,6 +603,7 @@ def main() -> None:
         "start": _cmd_start,
         "status": _cmd_status,
         "history": _cmd_history,
+        "logs": _cmd_logs,
         "test-email": _cmd_test_email,
         "config": _cmd_config,
         "update": _cmd_update,
