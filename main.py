@@ -343,9 +343,8 @@ def _check_service_enabled() -> None:
                 "[Pi Alerter] Service not enabled for auto-start",
                 "The pi-temp-alerter service is not enabled for automatic startup.\n"
                 "\n"
-                "If the Pi reboots, monitoring will not resume automatically.\n"
-                "To fix this, run:\n"
-                "  sudo systemctl enable pi-temp-alerter\n",
+                "If the device reboots, monitoring will not resume automatically.\n"
+                "Please enable the service for auto-start on the device.\n",
             )
     except (OSError, FileNotFoundError):
         # systemctl not available (development environment) - skip check
