@@ -15,6 +15,12 @@ SERVICE_USER="${APP_NAME}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# If the repo is already under /opt, install in-place rather than copying
+# to a separate directory. This avoids path mismatches from repo naming.
+if [[ "${REPO_DIR}" == /opt/* ]]; then
+    INSTALL_DIR="${REPO_DIR}"
+fi
+
 # Colour output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -95,12 +101,16 @@ mkdir -p "${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}/logs"
 mkdir -p "${INSTALL_DIR}/data"
 
-# Copy application files (always overwrite on reinstall to pick up updates)
-info "Copying application files"
-rm -rf "${INSTALL_DIR}/src"
-cp -r "${REPO_DIR}/src" "${INSTALL_DIR}/"
-cp "${REPO_DIR}/main.py" "${INSTALL_DIR}/"
-cp "${REPO_DIR}/requirements.txt" "${INSTALL_DIR}/"
+# Copy application files (skip if installing in-place from the repo itself)
+if [[ "${REPO_DIR}" != "${INSTALL_DIR}" ]]; then
+    info "Copying application files"
+    rm -rf "${INSTALL_DIR}/src"
+    cp -r "${REPO_DIR}/src" "${INSTALL_DIR}/"
+    cp "${REPO_DIR}/main.py" "${INSTALL_DIR}/"
+    cp "${REPO_DIR}/requirements.txt" "${INSTALL_DIR}/"
+else
+    info "Installing in-place (repo is the install directory)"
+fi
 
 # Copy .env only if it does not already exist (preserve existing config)
 if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
@@ -133,9 +143,35 @@ info "Setting file permissions"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
 chmod 600 "${INSTALL_DIR}/.env"
 
-# Install systemd service (always overwrite to pick up changes)
+# Install systemd service (generate from template with correct paths)
 info "Installing systemd service"
-cp "${REPO_DIR}/systemd/${APP_NAME}.service" "${SERVICE_FILE}"
+cat > "${SERVICE_FILE}" <<EOF
+[Unit]
+Description=Pi Temperature Alerter - System health monitoring
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${SERVICE_USER}
+Group=${SERVICE_USER}
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=${INSTALL_DIR}/venv/bin/python main.py start
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=${INSTALL_DIR}/logs ${INSTALL_DIR}/data
+
+[Install]
+WantedBy=multi-user.target
+EOF
 systemctl daemon-reload
 
 # Enable the service (idempotent - harmless if already enabled)
