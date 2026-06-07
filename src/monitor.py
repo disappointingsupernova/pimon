@@ -13,7 +13,7 @@ from src.alerting.email_sender import send_alert_email, send_recovery_email
 from src.alerting.thresholds import AlertLevel, ThresholdEvaluator
 from src.config import config
 from src.dashboard.app import record_reading
-from src.logger import log_temperature_csv
+from src.logger import log_temperature_csv, prune_old_csv_files
 from src.sensors.base import SensorReading
 from src.sensors.manager import SensorManager
 
@@ -35,6 +35,11 @@ class Monitor:
         self._start_time = datetime.now(timezone.utc)
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
+
+        # Prune old CSV files on startup
+        removed = prune_old_csv_files()
+        if removed:
+            logger.info("Pruned %d old CSV file(s)", removed)
 
         sensors = self._sensor_manager.sensors
         logger.info(

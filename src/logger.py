@@ -1,12 +1,12 @@
 """Logging configuration for Pi Temperature Alerter.
 
-Sets up rotating file handler and console output. Optionally logs
-temperature readings to a CSV file for historical analysis.
+Sets up rotating file handler and console output. Implements daily CSV
+rotation with configurable retention for temperature history.
 """
 
 import csv
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -22,6 +22,10 @@ def setup_logging() -> logging.Logger:
 
     logger = logging.getLogger("pi_temp_alerter")
     logger.setLevel(getattr(logging, config.log_level.upper(), logging.INFO))
+
+    # Prevent duplicate handlers on repeated calls
+    if logger.handlers:
+        return logger
 
     formatter = logging.Formatter(
         "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
@@ -45,13 +49,20 @@ def setup_logging() -> logging.Logger:
     return logger
 
 
+def _get_csv_path(day: date | None = None) -> Path:
+    """Return the CSV path for a given day (defaults to today)."""
+    if day is None:
+        day = date.today()
+    return _DATA_DIR / f"temperature_{day.isoformat()}.csv"
+
+
 def log_temperature_csv(sensor: str, temperature: float) -> None:
-    """Append a temperature reading to the CSV history file."""
+    """Append a temperature reading to today's CSV file."""
     if not config.csv_logging_enabled:
         return
 
     _DATA_DIR.mkdir(exist_ok=True)
-    csv_path = _DATA_DIR / "temperature_history.csv"
+    csv_path = _get_csv_path()
     file_exists = csv_path.exists()
 
     with open(csv_path, "a", newline="") as f:
@@ -63,3 +74,46 @@ def log_temperature_csv(sensor: str, temperature: float) -> None:
             sensor,
             f"{temperature:.1f}",
         ])
+
+
+def prune_old_csv_files() -> int:
+    """Remove CSV files older than the configured retention period.
+
+    Returns the number of files removed.
+    """
+    if not _DATA_DIR.exists():
+        return 0
+
+    cutoff = date.today() - timedelta(days=config.csv_retention_days)
+    removed = 0
+
+    for csv_file in _DATA_DIR.glob("temperature_*.csv"):
+        try:
+            # Extract date from filename: temperature_YYYY-MM-DD.csv
+            date_str = csv_file.stem.replace("temperature_", "")
+            file_date = date.fromisoformat(date_str)
+            if file_date < cutoff:
+                csv_file.unlink()
+                removed += 1
+        except ValueError:
+            continue
+
+    return removed
+
+
+def get_recent_csv_rows(count: int = 20) -> list[dict]:
+    """Read the most recent CSV entries across today and yesterday's files."""
+    rows: list[dict] = []
+
+    # Check today and yesterday (covers the case where we just rolled over)
+    for days_ago in range(2):
+        day = date.today() - timedelta(days=days_ago)
+        csv_path = _get_csv_path(day)
+        if csv_path.exists():
+            with open(csv_path, "r") as f:
+                reader = csv.DictReader(f)
+                rows.extend(reader)
+
+    # Sort by timestamp descending and return the requested count
+    rows.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    return list(reversed(rows[:count]))

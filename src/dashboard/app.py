@@ -3,7 +3,7 @@
 import csv
 import logging
 from collections import deque
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from threading import Thread
 
@@ -79,19 +79,18 @@ def api_history():
 
 @app.route("/api/history/csv")
 def api_history_csv():
-    """Return the last 500 entries from the CSV log."""
-    csv_path = _DATA_DIR / "temperature_history.csv"
-    if not csv_path.exists():
-        return jsonify({"entries": []})
-
+    """Return the last 500 entries from recent CSV logs."""
     entries = []
-    with open(csv_path, "r") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        for row in rows[-500:]:
-            entries.append(row)
+    for days_ago in range(2):
+        day = date.today() - timedelta(days=days_ago)
+        csv_path = _DATA_DIR / f"temperature_{day.isoformat()}.csv"
+        if csv_path.exists():
+            with open(csv_path, "r") as f:
+                reader = csv.DictReader(f)
+                entries.extend(reader)
 
-    return jsonify({"entries": entries})
+    entries.sort(key=lambda r: r.get("timestamp", ""))
+    return jsonify({"entries": entries[-500:]})
 
 
 def start_dashboard() -> Thread | None:

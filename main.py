@@ -57,23 +57,16 @@ def _cmd_status(_args: argparse.Namespace) -> None:
 
 def _cmd_history(args: argparse.Namespace) -> None:
     """Display recent temperature history from CSV log."""
-    csv_path = _APP_DIR / "data" / "temperature_history.csv"
-    if not csv_path.exists():
-        print("No history data found. Start monitoring to begin logging.")
-        sys.exit(1)
+    from src.logger import get_recent_csv_rows
 
-    count = args.lines
-    with open(csv_path, "r") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-
+    rows = get_recent_csv_rows(args.lines)
     if not rows:
-        print("History file is empty.")
+        print("No history data found. Start monitoring to begin logging.")
         sys.exit(1)
 
     print(f"{'Timestamp':<28} {'Sensor':<20} {'Temperature'}")
     print("-" * 60)
-    for row in rows[-count:]:
+    for row in rows:
         print(f"{row['timestamp']:<28} {row['sensor']:<20} {row['temperature_c']} C")
 
 
