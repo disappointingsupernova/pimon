@@ -147,6 +147,18 @@ class Monitor:
             if self._store_readings_batch:
                 self._store_readings_batch(successful)
 
+            # Store system metrics alongside temperature data
+            if self._store_readings_batch:
+                from src.sensors.system_metrics import collect_metrics
+                from src.database.repository import store_system_metrics
+                metrics = collect_metrics()
+                store_system_metrics(
+                    metrics.cpu_percent,
+                    metrics.memory_percent,
+                    metrics.disk_percent,
+                    metrics.throttled,
+                )
+
             if self._mqtt_publish:
                 for sensor_name, temp in successful:
                     self._mqtt_publish(sensor_name, temp)

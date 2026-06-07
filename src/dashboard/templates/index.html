@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pi Temperature Alerter - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -13,8 +14,9 @@
             color: #eee;
             padding: 1.5rem;
         }
-        h1 { margin-bottom: 1rem; font-size: 1.5rem; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+        h2 { margin: 1.5rem 0 0.75rem; font-size: 1.1rem; opacity: 0.8; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
         .card {
             background: #16213e;
             border-radius: 8px;
@@ -25,16 +27,28 @@
         .card.critical { border-left-color: #e74c3c; }
         .card.emergency { border-left-color: #8e44ad; }
         .card.normal { border-left-color: #27ae60; }
-        .card h2 { font-size: 1rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        .temp-value { font-size: 2.5rem; font-weight: bold; }
-        .status { font-size: 0.85rem; opacity: 0.7; margin-top: 0.3rem; }
-        .chart-container { background: #16213e; border-radius: 8px; padding: 1.2rem; }
-        .thresholds { display: flex; gap: 1.5rem; margin-bottom: 1rem; font-size: 0.85rem; }
-        .thresholds span { padding: 0.2rem 0.6rem; border-radius: 4px; }
+        .card h3 { font-size: 0.8rem; margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
+        .card .value { font-size: 2rem; font-weight: bold; }
+        .card .sub { font-size: 0.75rem; opacity: 0.6; margin-top: 0.2rem; }
+        .chart-container { background: #16213e; border-radius: 8px; padding: 1.2rem; margin-bottom: 1.5rem; }
+        .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
+        .controls button {
+            background: #0f3460;
+            border: none;
+            color: #eee;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .controls button.active { background: #3498db; }
+        .controls button:hover { background: #2980b9; }
+        .thresholds { display: flex; gap: 1rem; margin-bottom: 1rem; font-size: 0.8rem; flex-wrap: wrap; }
+        .thresholds span { padding: 0.2rem 0.5rem; border-radius: 4px; }
         .th-warn { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
         .th-crit { background: rgba(231, 76, 60, 0.2); color: #e74c3c; }
         .th-emer { background: rgba(142, 68, 173, 0.2); color: #8e44ad; }
-        .updated { text-align: right; font-size: 0.75rem; opacity: 0.5; margin-top: 1rem; }
+        .footer { text-align: right; font-size: 0.7rem; opacity: 0.4; margin-top: 1rem; }
     </style>
 </head>
 <body>
@@ -46,13 +60,34 @@
         <span class="th-emer">Emergency: {{ config.temp_emergency }} C</span>
     </div>
 
+    <!-- Sensor temperature cards -->
     <div class="grid" id="sensor-cards"></div>
 
+    <!-- System metrics cards -->
+    <h2>System Metrics</h2>
+    <div class="grid" id="system-cards"></div>
+
+    <!-- Temperature chart with lookback controls -->
+    <h2>Temperature History</h2>
+    <div class="controls">
+        <button data-hours="1">1h</button>
+        <button data-hours="6">6h</button>
+        <button data-hours="12">12h</button>
+        <button data-hours="24" class="active">24h</button>
+        <button data-hours="48">2d</button>
+        <button data-hours="168">7d</button>
+    </div>
     <div class="chart-container">
         <canvas id="tempChart" height="80"></canvas>
     </div>
 
-    <p class="updated" id="last-updated"></p>
+    <!-- System metrics chart -->
+    <h2>System Load</h2>
+    <div class="chart-container">
+        <canvas id="sysChart" height="60"></canvas>
+    </div>
+
+    <p class="footer" id="last-updated"></p>
 
     <script>
         const thresholds = {
@@ -66,10 +101,14 @@
             'rgb(46, 204, 113)',
             'rgb(155, 89, 182)',
             'rgb(241, 196, 15)',
+            'rgb(230, 126, 34)',
         ];
 
-        let chart;
-        const historyData = {};
+        let tempChart, sysChart;
+        let currentHours = 24;
+
+        // System metrics history (in-memory for the chart)
+        const sysHistory = { labels: [], cpu: [], mem: [] };
 
         function getLevel(temp) {
             if (temp >= thresholds.emergency) return 'emergency';
@@ -78,13 +117,7 @@
             return 'normal';
         }
 
-        function escapeHtml(str) {
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
-        }
-
-        function updateCards(readings) {
+        function updateSensorCards(readings) {
             const container = document.getElementById('sensor-cards');
             container.innerHTML = '';
             readings.forEach(r => {
@@ -92,78 +125,196 @@
                 const card = document.createElement('div');
                 card.className = `card ${level}`;
 
-                const h2 = document.createElement('h2');
-                h2.textContent = r.sensor;
+                const h3 = document.createElement('h3');
+                h3.textContent = r.sensor;
 
-                const tempDiv = document.createElement('div');
-                tempDiv.className = 'temp-value';
-                tempDiv.textContent = r.available ? r.temperature_c.toFixed(1) + ' C' : 'N/A';
+                const val = document.createElement('div');
+                val.className = 'value';
+                val.textContent = r.available ? r.temperature_c.toFixed(1) + ' C' : 'N/A';
 
-                const statusDiv = document.createElement('div');
-                statusDiv.className = 'status';
-                statusDiv.textContent = r.available ? level.toUpperCase() : (r.error || 'Unavailable');
+                const sub = document.createElement('div');
+                sub.className = 'sub';
+                sub.textContent = r.available ? level.toUpperCase() : (r.error || 'Unavailable');
 
-                card.appendChild(h2);
-                card.appendChild(tempDiv);
-                card.appendChild(statusDiv);
+                card.appendChild(h3);
+                card.appendChild(val);
+                card.appendChild(sub);
                 container.appendChild(card);
             });
         }
 
-        function initChart() {
-            const ctx = document.getElementById('tempChart').getContext('2d');
-            chart = new Chart(ctx, {
+        function updateSystemCards(system) {
+            const container = document.getElementById('system-cards');
+            container.innerHTML = '';
+
+            const metrics = [
+                { label: 'CPU', value: system.cpu_percent + '%', sub: 'Usage' },
+                { label: 'Memory', value: system.memory_percent + '%', sub: system.memory_used_mb + ' / ' + system.memory_total_mb + ' MB' },
+                { label: 'Disk', value: system.disk_percent + '%', sub: system.disk_used_gb + ' / ' + system.disk_total_gb + ' GB' },
+                { label: 'Throttled', value: system.throttled ? 'YES' : 'No', sub: 'Flags: ' + system.throttle_flags },
+            ];
+
+            metrics.forEach(m => {
+                const card = document.createElement('div');
+                card.className = 'card';
+
+                const h3 = document.createElement('h3');
+                h3.textContent = m.label;
+
+                const val = document.createElement('div');
+                val.className = 'value';
+                val.textContent = m.value;
+
+                const sub = document.createElement('div');
+                sub.className = 'sub';
+                sub.textContent = m.sub;
+
+                card.appendChild(h3);
+                card.appendChild(val);
+                card.appendChild(sub);
+                container.appendChild(card);
+            });
+
+            // Track for system chart
+            const now = new Date().toLocaleTimeString();
+            sysHistory.labels.push(now);
+            sysHistory.cpu.push(system.cpu_percent);
+            sysHistory.mem.push(system.memory_percent);
+            if (sysHistory.labels.length > 120) {
+                sysHistory.labels.shift();
+                sysHistory.cpu.shift();
+                sysHistory.mem.shift();
+            }
+            updateSysChart();
+        }
+
+        function initCharts() {
+            const tempCtx = document.getElementById('tempChart').getContext('2d');
+            tempChart = new Chart(tempCtx, {
+                type: 'line',
+                data: { datasets: [] },
+                options: {
+                    responsive: true,
+                    animation: false,
+                    interaction: { intersect: false, mode: 'index' },
+                    scales: {
+                        x: { type: 'category', ticks: { color: '#888', maxTicksLimit: 20 } },
+                        y: {
+                            title: { display: true, text: 'Temperature (C)', color: '#888' },
+                            ticks: { color: '#888' },
+                        }
+                    },
+                    plugins: { legend: { labels: { color: '#eee' } } }
+                }
+            });
+
+            const sysCtx = document.getElementById('sysChart').getContext('2d');
+            sysChart = new Chart(sysCtx, {
                 type: 'line',
                 data: { datasets: [] },
                 options: {
                     responsive: true,
                     animation: false,
                     scales: {
-                        x: { type: 'category', ticks: { color: '#888' } },
-                        y: { title: { display: true, text: 'Temperature (C)', color: '#888' }, ticks: { color: '#888' } }
+                        x: { type: 'category', ticks: { color: '#888', maxTicksLimit: 20 } },
+                        y: {
+                            title: { display: true, text: 'Usage (%)', color: '#888' },
+                            ticks: { color: '#888' },
+                            min: 0, max: 100,
+                        }
                     },
                     plugins: { legend: { labels: { color: '#eee' } } }
                 }
             });
         }
 
-        function updateChart(readings) {
-            const now = new Date().toLocaleTimeString();
-            readings.forEach((r, i) => {
-                if (!r.available) return;
-                if (!historyData[r.sensor]) historyData[r.sensor] = { labels: [], data: [] };
-                const h = historyData[r.sensor];
-                h.labels.push(now);
-                h.data.push(r.temperature_c);
-                if (h.labels.length > 60) { h.labels.shift(); h.data.shift(); }
-            });
-
-            chart.data.labels = Object.values(historyData)[0]?.labels || [];
-            chart.data.datasets = Object.entries(historyData).map(([name, h], i) => ({
-                label: name,
-                data: h.data,
-                borderColor: colours[i % colours.length],
-                tension: 0.3,
-                pointRadius: 0,
-            }));
-            chart.update();
+        function updateSysChart() {
+            sysChart.data.labels = sysHistory.labels;
+            sysChart.data.datasets = [
+                { label: 'CPU %', data: sysHistory.cpu, borderColor: 'rgb(231, 76, 60)', tension: 0.3, pointRadius: 0 },
+                { label: 'Memory %', data: sysHistory.mem, borderColor: 'rgb(52, 152, 219)', tension: 0.3, pointRadius: 0 },
+            ];
+            sysChart.update();
         }
 
-        async function poll() {
+        async function loadHistoricalData(hours) {
             try {
-                const res = await fetch('/api/current');
+                const res = await fetch(`/api/history/db?hours=${hours}`);
                 const data = await res.json();
-                updateCards(data.readings);
-                updateChart(data.readings);
-                document.getElementById('last-updated').textContent = 'Last updated: ' + new Date().toLocaleString();
+
+                if (data.sensors) {
+                    const datasets = [];
+                    let labels = [];
+                    let i = 0;
+
+                    for (const [sensor, readings] of Object.entries(data.sensors)) {
+                        const times = readings.map(r => {
+                            const d = new Date(r.timestamp);
+                            return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                        });
+                        const temps = readings.map(r => r.temperature_c);
+
+                        if (times.length > labels.length) labels = times;
+                        datasets.push({
+                            label: sensor,
+                            data: temps,
+                            borderColor: colours[i % colours.length],
+                            tension: 0.3,
+                            pointRadius: 0,
+                        });
+                        i++;
+                    }
+
+                    tempChart.data.labels = labels;
+                    tempChart.data.datasets = datasets;
+                    tempChart.update();
+                }
             } catch (e) {
-                console.error('Poll failed:', e);
+                console.error('Failed to load history:', e);
             }
         }
 
-        initChart();
-        poll();
-        setInterval(poll, 5000);
+        async function pollCurrent() {
+            try {
+                const res = await fetch('/api/health');
+                const data = await res.json();
+
+                if (data.sensors) updateSensorCards(data.sensors);
+                if (data.system) updateSystemCards(data.system);
+
+                document.getElementById('last-updated').textContent =
+                    'Last updated: ' + new Date().toLocaleString() +
+                    ' | Uptime: ' + Math.round(data.uptime_seconds / 60) + ' min';
+            } catch (e) {
+                // Fall back to /api/current if health is disabled
+                try {
+                    const res = await fetch('/api/current');
+                    const data = await res.json();
+                    if (data.readings) updateSensorCards(data.readings);
+                } catch (e2) {
+                    console.error('Poll failed:', e2);
+                }
+            }
+        }
+
+        // Time range button handling
+        document.querySelectorAll('.controls button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentHours = parseInt(btn.dataset.hours);
+                loadHistoricalData(currentHours);
+            });
+        });
+
+        // Initialise
+        initCharts();
+        pollCurrent();
+        loadHistoricalData(currentHours);
+
+        // Refresh current data every 5s, historical chart every 60s
+        setInterval(pollCurrent, 5000);
+        setInterval(() => loadHistoricalData(currentHours), 60000);
     </script>
 </body>
 </html>

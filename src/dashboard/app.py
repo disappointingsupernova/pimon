@@ -126,6 +126,47 @@ def api_history():
     return jsonify(_recent_readings)
 
 
+@app.route("/api/history/db")
+def api_history_db():
+    """Return historical readings from the database with configurable lookback.
+
+    Query parameters:
+        hours: Number of hours to look back (default: 24, max: 168)
+        sensor: Optional sensor name filter
+    """
+    if not config.endpoint_api_enabled:
+        return Response("Endpoint disabled.", 404)
+    if not config.database_enabled:
+        return jsonify({"error": "Database not enabled"}), 400
+
+    from src.database.repository import get_readings_for_sensor, get_recent_readings
+
+    hours = request.args.get("hours", 24, type=int)
+    hours = min(max(hours, 1), 168)  # Clamp between 1 and 168 (7 days)
+    sensor = request.args.get("sensor", None)
+
+    if sensor:
+        readings = get_readings_for_sensor(sensor, hours=hours)
+        return jsonify({"sensor": sensor, "hours": hours, "readings": readings})
+
+    # Return all sensors grouped
+    from src.database.models import get_session, TemperatureReading
+    from sqlalchemy import distinct
+    session = get_session()
+    try:
+        sensors = [
+            r[0] for r in session.query(distinct(TemperatureReading.sensor_name)).all()
+        ]
+    finally:
+        session.close()
+
+    result = {}
+    for s in sensors:
+        result[s] = get_readings_for_sensor(s, hours=hours)
+
+    return jsonify({"hours": hours, "sensors": result})
+
+
 @app.route("/api/health")
 def api_health():
     """Return system health status from cached data."""
