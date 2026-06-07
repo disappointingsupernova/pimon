@@ -144,27 +144,25 @@ class Config:
         """Validate configuration and return a list of error messages.
 
         Returns an empty list if configuration is valid.
+        Only validates SMTP if email recipients are configured.
         """
         errors: list[str] = []
 
-        # SMTP validation
-        if not self.smtp_host:
-            errors.append("SMTP_HOST is not set")
-        if not self.email_from:
-            errors.append("EMAIL_FROM is not set")
-        if not self.smtp_username:
-            errors.append("SMTP_USERNAME is not set")
-        if not self.smtp_password:
-            errors.append("SMTP_PASSWORD is not set")
-
-        # Recipient validation
+        # SMTP validation - only required if recipients are configured
         all_recipients = (
             self.recipients_warning
             + self.recipients_critical
             + self.recipients_emergency
         )
-        if not all_recipients:
-            errors.append("No email recipients configured at any level")
+        if all_recipients:
+            if not self.smtp_host:
+                errors.append("SMTP_HOST is not set (required when recipients are configured)")
+            if not self.email_from:
+                errors.append("EMAIL_FROM is not set (required when recipients are configured)")
+            if not self.smtp_username:
+                errors.append("SMTP_USERNAME is not set (required when recipients are configured)")
+            if not self.smtp_password:
+                errors.append("SMTP_PASSWORD is not set (required when recipients are configured)")
 
         # Threshold ordering
         if not (self.temp_warning < self.temp_critical < self.temp_emergency):
