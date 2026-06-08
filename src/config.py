@@ -138,9 +138,10 @@ class Config:
         self.fan_on_threshold: float = _float(os.getenv("FAN_ON_THRESHOLD"), 55.0)
         self.fan_off_threshold: float = _float(os.getenv("FAN_OFF_THRESHOLD"), 45.0)
 
-        # External service collectors
-        self.collector_fr24_enabled: bool = _bool(os.getenv("COLLECTOR_FR24_ENABLED", "false"))
-        self.collector_readsb_enabled: bool = _bool(os.getenv("COLLECTOR_READSB_ENABLED", "false"))
+        # External service collectors (auto-detected unless explicitly disabled)
+        # Set to 'false' to disable even if the service is detected
+        self.collector_fr24_enabled: bool | None = self._collector_state("COLLECTOR_FR24_ENABLED")
+        self.collector_readsb_enabled: bool | None = self._collector_state("COLLECTOR_READSB_ENABLED")
         self.collector_readsb_stats_dir: str = os.getenv("COLLECTOR_READSB_STATS_DIR", "/run/readsb")
 
         # Per-sensor threshold overrides (populated dynamically)
@@ -203,6 +204,13 @@ class Config:
                 )
 
         return errors
+
+    def _collector_state(self, env_key: str) -> bool | None:
+        """Determine collector state: True (forced on), False (forced off), None (auto-detect)."""
+        value = os.getenv(env_key)
+        if value is None:
+            return None  # Not set - will auto-detect
+        return _bool(value)
 
     def _load_sensor_overrides(self) -> dict[str, dict[str, float]]:
         """Load per-sensor threshold overrides from environment variables.

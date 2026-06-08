@@ -301,7 +301,12 @@ class Monitor:
         send_daily_digest()
 
     def _publish_collector_stats(self) -> None:
-        """Publish external service collector stats to MQTT."""
+        """Publish external service collector stats to MQTT.
+
+        Services are auto-detected: if the service is running and responsive,
+        stats are published. Set COLLECTOR_*_ENABLED=false in .env to explicitly
+        disable a collector even if the service is present.
+        """
         from src.alerting.notifiers.mqtt import _get_client, _topic, _now_iso
         import json
 
@@ -309,23 +314,29 @@ class Monitor:
         if client is None:
             return
 
-        # fr24feed collector
-        if config.collector_fr24_enabled:
+        # fr24feed collector (auto-detect unless explicitly disabled)
+        if config.collector_fr24_enabled is not False:
             from src.sensors.collectors.fr24feed import collect_fr24_stats
             from src.alerting.notifiers.mqtt import publish_ha_discovery_for_fr24
             stats = collect_fr24_stats()
             if stats:
+                if not hasattr(self, '_fr24_detected'):
+                    logger.info("Auto-detected fr24feed service, publishing stats")
+                    self._fr24_detected = True
                 publish_ha_discovery_for_fr24()
                 stats["timestamp"] = _now_iso()
                 topic = _topic("service/fr24feed/state")
                 client.publish(topic, json.dumps(stats), qos=1, retain=True)
 
-        # readsb collector
-        if config.collector_readsb_enabled:
+        # readsb collector (auto-detect unless explicitly disabled)
+        if config.collector_readsb_enabled is not False:
             from src.sensors.collectors.readsb import collect_readsb_stats
             from src.alerting.notifiers.mqtt import publish_ha_discovery_for_readsb
             stats = collect_readsb_stats()
             if stats:
+                if not hasattr(self, '_readsb_detected'):
+                    logger.info("Auto-detected readsb service, publishing stats")
+                    self._readsb_detected = True
                 publish_ha_discovery_for_readsb()
                 stats["timestamp"] = _now_iso()
                 topic = _topic("service/readsb/state")

@@ -34,7 +34,8 @@ def collect_fr24_stats() -> dict | None:
 
     Returns a dict of metrics, or None if the service is unavailable.
     """
-    if not config.collector_fr24_enabled:
+    # Explicitly disabled
+    if config.collector_fr24_enabled is False:
         return None
 
     # Try the HTTP monitor endpoint first (more reliable)

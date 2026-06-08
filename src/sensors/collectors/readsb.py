@@ -33,7 +33,8 @@ def collect_readsb_stats() -> dict | None:
 
     Returns a dict of metrics, or None if the service is unavailable.
     """
-    if not config.collector_readsb_enabled:
+    # Explicitly disabled
+    if config.collector_readsb_enabled is False:
         return None
 
     stats_path = Path(config.collector_readsb_stats_dir) / "stats.json"
