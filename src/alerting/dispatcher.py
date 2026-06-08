@@ -1,15 +1,38 @@
 """Notification dispatcher for PiMon.
 
 Sends alerts and recovery notifications via all enabled channels:
-email, webhook, Telegram, and Pushover.
+email, webhook, Telegram, Pushover, and MQTT.
+Respects per-channel notification cooldowns.
 """
 
 import logging
+import time
 
 from src.alerting.thresholds import AlertLevel
 from src.config import config
 
 logger = logging.getLogger("pimon")
+
+# Per-channel last-send timestamps for throttling
+_last_sent: dict[str, float] = {}
+
+
+def _channel_allowed(channel: str) -> bool:
+    """Check whether a channel's cooldown has elapsed."""
+    cooldown_map = {
+        "email": config.cooldown_email,
+        "webhook": config.cooldown_webhook,
+        "telegram": config.cooldown_telegram,
+        "pushover": config.cooldown_pushover,
+        "mqtt": config.cooldown_mqtt,
+    }
+    cooldown = cooldown_map.get(channel, 0) or config.alert_cooldown
+    now = time.monotonic()
+    last = _last_sent.get(channel, 0.0)
+    if (now - last) < cooldown:
+        return False
+    _last_sent[channel] = now
+    return True
 
 
 def dispatch_alert(
@@ -26,10 +49,11 @@ def dispatch_alert(
     from src.alerting.notifiers.webhook import send_webhook
 
     # Email
-    send_alert_email(recipients, level, sensor_name, temperature)
+    if _channel_allowed("email"):
+        send_alert_email(recipients, level, sensor_name, temperature)
 
     # Webhook
-    if config.webhook_enabled and config.webhook_url:
+    if config.webhook_enabled and config.webhook_url and _channel_allowed("webhook"):
         send_webhook({
             "event": "alert",
             "level": level.name,
@@ -39,7 +63,7 @@ def dispatch_alert(
         })
 
     # Telegram
-    if config.telegram_enabled:
+    if config.telegram_enabled and _channel_allowed("telegram"):
         msg = (
             f"<b>{level.name}</b>: {sensor_name}\n"
             f"Temperature: {temperature:.1f} C"
@@ -47,7 +71,7 @@ def dispatch_alert(
         send_telegram(msg)
 
     # Pushover
-    if config.pushover_enabled:
+    if config.pushover_enabled and _channel_allowed("pushover"):
         send_pushover(
             title=f"{level.name}: {sensor_name}",
             message=f"Temperature: {temperature:.1f} C",
@@ -55,7 +79,7 @@ def dispatch_alert(
         )
 
     # MQTT
-    if config.mqtt_enabled:
+    if config.mqtt_enabled and _channel_allowed("mqtt"):
         publish_alert(sensor_name, level.name, temperature)
 
     # Persist alert event to database

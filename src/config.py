@@ -144,6 +144,13 @@ class Config:
         self.fan_off_threshold: float = _float(os.getenv("FAN_OFF_THRESHOLD"), 45.0)
         self.fan_sensor: str = os.getenv("FAN_SENSOR", "max")  # 'max' or specific sensor name
 
+        # Per-channel notification cooldowns (seconds, 0 = use global ALERT_COOLDOWN)
+        self.cooldown_email: int = _int(os.getenv("COOLDOWN_EMAIL"), 0)
+        self.cooldown_webhook: int = _int(os.getenv("COOLDOWN_WEBHOOK"), 0)
+        self.cooldown_telegram: int = _int(os.getenv("COOLDOWN_TELEGRAM"), 0)
+        self.cooldown_pushover: int = _int(os.getenv("COOLDOWN_PUSHOVER"), 0)
+        self.cooldown_mqtt: int = _int(os.getenv("COOLDOWN_MQTT"), 0)
+
         # Sensor aliases (friendly names for display)
         self.sensor_aliases: dict[str, str] = self._load_sensor_aliases()
 
