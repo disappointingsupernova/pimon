@@ -4,13 +4,14 @@ After=network.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
 User=pimon
 Group=pimon
 WorkingDirectory=/opt/pimon
 ExecStart=/opt/pimon/venv/bin/python main.py start
 Restart=on-failure
 RestartSec=10
+WatchdogSec=90
 StandardOutput=journal
 StandardError=journal
 

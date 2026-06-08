@@ -17,6 +17,7 @@ from src.dashboard.app import record_reading, update_latest_readings
 from src.logger import log_temperatures_csv_batch, prune_old_csv_files
 from src.sensors.base import SensorReading
 from src.sensors.manager import SensorManager
+from src.watchdog import init_watchdog, notify_ready, notify_stopping, notify_watchdog
 
 logger = logging.getLogger("pimon")
 
@@ -57,6 +58,9 @@ class Monitor:
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
 
+        # Initialise systemd watchdog
+        init_watchdog()
+
         # Startup health check
         self._startup_health_check()
 
@@ -73,6 +77,9 @@ class Monitor:
                 logger.info("Pruned %d old database record(s)", db_removed)
 
         sensors = self._sensor_manager.sensors
+        # Notify systemd that startup is complete
+        notify_ready()
+
         logger.info(
             "Monitoring started with %d sensor(s): %s",
             len(sensors),
@@ -98,8 +105,10 @@ class Monitor:
 
         while self._running:
             self._poll()
+            notify_watchdog()
             time.sleep(config.poll_interval)
 
+        notify_stopping()
         logger.info("Monitoring stopped")
 
     def stop(self) -> None:
@@ -352,7 +361,8 @@ class Monitor:
         logger.warning("Scheduled reboot triggered (day=%s, hour=%d)", day_name, now.hour)
         subprocess.run(["sudo", "reboot"], capture_output=True)
 
-    def _startup_health_check(self) -> None:        """Run a system health check on startup and log the results.
+    def _startup_health_check(self) -> None:
+        """Run a system health check on startup and log the results.
 
         Verifies that critical subsystems are operational before entering
         the main poll loop. Logs warnings for any issues detected.
