@@ -87,6 +87,19 @@ fi
 
 info "Installing ${APP_NAME} to ${INSTALL_DIR}"
 
+# Clean up old service name if migrating from pi-temp-alerter
+OLD_SERVICE="pi-temp-alerter"
+OLD_SERVICE_FILE="/etc/systemd/system/${OLD_SERVICE}.service"
+OLD_CLI="/usr/local/bin/${OLD_SERVICE}"
+if [[ -f "${OLD_SERVICE_FILE}" ]]; then
+    info "Migrating from old service name '${OLD_SERVICE}'"
+    systemctl stop "${OLD_SERVICE}" 2>/dev/null || true
+    systemctl disable "${OLD_SERVICE}" 2>/dev/null || true
+    rm -f "${OLD_SERVICE_FILE}"
+    rm -f "${OLD_CLI}"
+    systemctl daemon-reload
+fi
+
 # Create service user (no login shell, no home directory)
 if ! id "${SERVICE_USER}" &>/dev/null; then
     info "Creating service user: ${SERVICE_USER}"
