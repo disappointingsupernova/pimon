@@ -1,20 +1,30 @@
 """MQTT publisher for Pi Temperature Alerter.
 
 Publishes temperature readings, system metrics, alerts, and recovery
-events to an MQTT broker. Supports Home Assistant MQTT auto-discovery
-so all sensors appear automatically without manual configuration.
+events to an MQTT broker. Supports:
+    - Home Assistant MQTT auto-discovery (sensors + binary sensors)
+    - Last Will and Testament (LWT) for offline detection
+    - Command topic subscription for remote control
+    - Multi-Pi aggregation (hostname in topic and payload)
+    - Grafana-friendly flat payloads with timestamps
 
 Topic structure:
-    <prefix>/sensor/<name>/state       - Temperature reading (retained)
-    <prefix>/system/state              - System metrics (retained)
-    <prefix>/alerts                    - Alert events (not retained)
-    <prefix>/recovery                  - Recovery events (not retained)
-    homeassistant/sensor/<id>/config   - HA discovery (retained)
+    <prefix>/<hostname>/sensor/<name>/state   - Temperature reading (retained)
+    <prefix>/<hostname>/system/state          - System metrics (retained)
+    <prefix>/<hostname>/alerts                - Alert events (not retained)
+    <prefix>/<hostname>/recovery              - Recovery events (not retained)
+    <prefix>/<hostname>/status                - Online/offline (retained, LWT)
+    <prefix>/<hostname>/command               - Inbound commands (subscribed)
+    homeassistant/sensor/<id>/config          - HA discovery (retained)
+    homeassistant/binary_sensor/<id>/config   - HA binary sensor discovery
 """
 
 import json
 import logging
+import os
 import platform
+import socket
+import subprocess
 import time
 from datetime import datetime, timezone
 
@@ -24,10 +34,16 @@ logger = logging.getLogger("pi_temp_alerter")
 
 _client = None
 _discovery_sent: set[str] = set()
+_hostname = socket.gethostname()
+
+
+def _topic(path: str) -> str:
+    """Build a full topic path with prefix and hostname for multi-Pi support."""
+    return f"{config.mqtt_topic_prefix}/{_hostname}/{path}"
 
 
 def _get_client():
-    """Lazily initialise the MQTT client."""
+    """Lazily initialise the MQTT client with LWT and command subscription."""
     global _client
     if _client is not None:
         return _client
@@ -43,16 +59,84 @@ def _get_client():
     if config.mqtt_username:
         _client.username_pw_set(config.mqtt_username, config.mqtt_password)
 
+    # Last Will and Testament: broker publishes "offline" if we disconnect unexpectedly
+    _client.will_set(
+        _topic("status"),
+        payload="offline",
+        qos=1,
+        retain=True,
+    )
+
+    # Set up command handler before connecting
+    _client.on_message = _handle_command
+
     try:
         _client.connect(config.mqtt_host, config.mqtt_port, keepalive=60)
         _client.loop_start()
-        logger.info("MQTT connected to %s:%d", config.mqtt_host, config.mqtt_port)
+
+        # Subscribe to command topic for remote control
+        _client.subscribe(_topic("command"), qos=1)
+        logger.info(
+            "MQTT connected to %s:%d (hostname: %s, LWT enabled)",
+            config.mqtt_host, config.mqtt_port, _hostname,
+        )
     except (OSError, Exception) as exc:
         logger.error("MQTT connection failed: %s", exc)
         _client = None
 
     return _client
 
+
+# =============================================================================
+# Command subscription handler
+# =============================================================================
+
+def _handle_command(client, userdata, message) -> None:
+    """Handle inbound commands from the MQTT command topic.
+
+    Supported commands:
+        {"action": "test_alert"}     - Trigger a test alert notification
+        {"action": "reload_config"}  - Log a config reload request
+        {"action": "status"}         - Publish current status immediately
+        {"action": "reboot"}         - Reboot the Pi (requires root)
+    """
+    try:
+        payload = json.loads(message.payload.decode("utf-8"))
+        action = payload.get("action", "")
+        logger.info("MQTT command received: %s", action)
+
+        if action == "test_alert":
+            # Publish a synthetic alert for testing HA automations
+            publish_alert("test", "WARNING", 0.0)
+            logger.info("Test alert published via MQTT command")
+
+        elif action == "status":
+            # Force an immediate status publish
+            publish_online()
+            logger.info("Status republished via MQTT command")
+
+        elif action == "reboot":
+            logger.warning("Reboot requested via MQTT command")
+            subprocess.run(["sudo", "reboot"], capture_output=True)
+
+        elif action == "poll_interval":
+            # Log the request - actual config change requires .env edit + restart
+            new_interval = payload.get("value")
+            logger.info(
+                "Poll interval change requested to %s (requires .env update and restart)",
+                new_interval,
+            )
+
+        else:
+            logger.warning("Unknown MQTT command action: %s", action)
+
+    except (json.JSONDecodeError, AttributeError) as exc:
+        logger.warning("Invalid MQTT command payload: %s", exc)
+
+
+# =============================================================================
+# Helpers
+# =============================================================================
 
 def _now_iso() -> str:
     """Return the current UTC time as an ISO 8601 string."""
@@ -63,10 +147,11 @@ def _device_info() -> dict:
     """Return device metadata for Home Assistant discovery."""
     return {
         "identifiers": [config.mqtt_client_id],
-        "name": "Pi Temperature Alerter",
+        "name": f"Pi Temp Alerter ({_hostname})",
         "manufacturer": "Raspberry Pi",
         "model": platform.machine(),
         "sw_version": "1.0.0",
+        "configuration_url": f"http://{_hostname}:{config.dashboard_port}",
     }
 
 
@@ -77,7 +162,8 @@ def _device_info() -> dict:
 def _send_ha_discovery(sensor_id: str, name: str, unit: str,
                        state_topic: str, value_template: str,
                        device_class: str | None = None,
-                       icon: str | None = None) -> None:
+                       icon: str | None = None,
+                       component: str = "sensor") -> None:
     """Publish a Home Assistant MQTT discovery config message.
 
     Only sent once per sensor per session to avoid spamming the broker.
@@ -90,24 +176,30 @@ def _send_ha_discovery(sensor_id: str, name: str, unit: str,
         return
 
     unique_id = f"{config.mqtt_client_id}_{sensor_id}"
-    discovery_topic = f"homeassistant/sensor/{unique_id}/config"
+    discovery_topic = f"homeassistant/{component}/{unique_id}/config"
 
     payload = {
         "name": name,
         "unique_id": unique_id,
         "state_topic": state_topic,
         "value_template": value_template,
-        "unit_of_measurement": unit,
         "device": _device_info(),
-        "availability_topic": f"{config.mqtt_topic_prefix}/status",
+        "availability_topic": _topic("status"),
         "payload_available": "online",
         "payload_not_available": "offline",
     }
 
+    if unit:
+        payload["unit_of_measurement"] = unit
     if device_class:
         payload["device_class"] = device_class
     if icon:
         payload["icon"] = icon
+
+    # Binary sensors need payload_on/payload_off
+    if component == "binary_sensor":
+        payload["payload_on"] = "True"
+        payload["payload_off"] = "False"
 
     client.publish(discovery_topic, json.dumps(payload), qos=1, retain=True)
     _discovery_sent.add(sensor_id)
@@ -115,7 +207,7 @@ def _send_ha_discovery(sensor_id: str, name: str, unit: str,
 
 def publish_ha_discovery_for_sensor(sensor_name: str) -> None:
     """Register a temperature sensor with Home Assistant auto-discovery."""
-    state_topic = f"{config.mqtt_topic_prefix}/sensor/{sensor_name}/state"
+    state_topic = _topic(f"sensor/{sensor_name}/state")
     _send_ha_discovery(
         sensor_id=f"temp_{sensor_name}",
         name=f"Temperature ({sensor_name})",
@@ -128,9 +220,9 @@ def publish_ha_discovery_for_sensor(sensor_name: str) -> None:
 
 def publish_ha_discovery_for_system() -> None:
     """Register system metric sensors with Home Assistant auto-discovery."""
-    state_topic = f"{config.mqtt_topic_prefix}/system/state"
+    state_topic = _topic("system/state")
 
-    metrics = [
+    sensors = [
         ("cpu_percent", "CPU Usage", "%", "{{ value_json.cpu_percent }}", None, "mdi:cpu-64-bit"),
         ("memory_percent", "Memory Usage", "%", "{{ value_json.memory_percent }}", None, "mdi:memory"),
         ("disk_percent", "Disk Usage", "%", "{{ value_json.disk_percent }}", None, "mdi:harddisk"),
@@ -143,10 +235,9 @@ def publish_ha_discovery_for_system() -> None:
         ("swap_percent", "Swap Usage", "%", "{{ value_json.swap_percent }}", None, "mdi:swap-horizontal"),
         ("network_rx_mb", "Network RX", "MB", "{{ value_json.network_rx_mb }}", "data_size", "mdi:download"),
         ("network_tx_mb", "Network TX", "MB", "{{ value_json.network_tx_mb }}", "data_size", "mdi:upload"),
-        ("throttled", "Throttled", "", "{{ value_json.throttled }}", None, "mdi:alert-circle"),
     ]
 
-    for sensor_id, name, unit, template, device_class, icon in metrics:
+    for sensor_id, name, unit, template, device_class, icon in sensors:
         _send_ha_discovery(
             sensor_id=f"sys_{sensor_id}",
             name=name,
@@ -157,13 +248,40 @@ def publish_ha_discovery_for_system() -> None:
             icon=icon,
         )
 
+    # Binary sensor for throttle state
+    _send_ha_discovery(
+        sensor_id="sys_throttled",
+        name="Throttled",
+        unit="",
+        state_topic=state_topic,
+        value_template="{{ value_json.throttled }}",
+        device_class="problem",
+        icon="mdi:alert-circle",
+        component="binary_sensor",
+    )
+
+    # Binary sensor for alert active state
+    _send_ha_discovery(
+        sensor_id="alert_active",
+        name="Temperature Alert Active",
+        unit="",
+        state_topic=_topic("alerts"),
+        value_template="{{ value_json.level != 'NORMAL' }}",
+        device_class="heat",
+        icon="mdi:thermometer-alert",
+        component="binary_sensor",
+    )
+
 
 # =============================================================================
 # Publishing functions
 # =============================================================================
 
 def publish_reading(sensor_name: str, temperature: float) -> bool:
-    """Publish a sensor temperature reading to MQTT."""
+    """Publish a sensor temperature reading to MQTT.
+
+    Payload is Grafana-friendly with flat keys and ISO timestamp.
+    """
     if not config.mqtt_enabled:
         return False
 
@@ -174,9 +292,10 @@ def publish_reading(sensor_name: str, temperature: float) -> bool:
     # Send HA discovery on first reading for this sensor
     publish_ha_discovery_for_sensor(sensor_name)
 
-    topic = f"{config.mqtt_topic_prefix}/sensor/{sensor_name}/state"
+    topic = _topic(f"sensor/{sensor_name}/state")
     payload = json.dumps({
         "sensor": sensor_name,
+        "hostname": _hostname,
         "temperature_c": round(temperature, 1),
         "timestamp": _now_iso(),
     })
@@ -188,8 +307,7 @@ def publish_reading(sensor_name: str, temperature: float) -> bool:
 def publish_system_metrics(metrics: dict) -> bool:
     """Publish comprehensive system metrics to MQTT.
 
-    Expects a dict with keys matching the system metrics collected
-    by the extended collector.
+    Payload includes hostname for multi-Pi aggregation in Grafana/Node-RED.
     """
     if not config.mqtt_enabled:
         return False
@@ -201,7 +319,8 @@ def publish_system_metrics(metrics: dict) -> bool:
     # Send HA discovery on first publish
     publish_ha_discovery_for_system()
 
-    topic = f"{config.mqtt_topic_prefix}/system/state"
+    topic = _topic("system/state")
+    metrics["hostname"] = _hostname
     metrics["timestamp"] = _now_iso()
 
     result = client.publish(topic, json.dumps(metrics), qos=1, retain=True)
@@ -209,7 +328,11 @@ def publish_system_metrics(metrics: dict) -> bool:
 
 
 def publish_alert(sensor_name: str, level: str, temperature: float) -> bool:
-    """Publish an alert event to MQTT."""
+    """Publish an alert event to MQTT.
+
+    Designed for HA automations - use the 'level' field to trigger
+    different actions (e.g. flash lights red for EMERGENCY).
+    """
     if not config.mqtt_enabled:
         return False
 
@@ -217,10 +340,11 @@ def publish_alert(sensor_name: str, level: str, temperature: float) -> bool:
     if client is None:
         return False
 
-    topic = f"{config.mqtt_topic_prefix}/alerts"
+    topic = _topic("alerts")
     payload = json.dumps({
         "event": "alert",
         "sensor": sensor_name,
+        "hostname": _hostname,
         "level": level,
         "temperature_c": round(temperature, 1),
         "timestamp": _now_iso(),
@@ -239,10 +363,11 @@ def publish_recovery(sensor_name: str, temperature: float, previous_level: str) 
     if client is None:
         return False
 
-    topic = f"{config.mqtt_topic_prefix}/recovery"
+    topic = _topic("recovery")
     payload = json.dumps({
         "event": "recovery",
         "sensor": sensor_name,
+        "hostname": _hostname,
         "temperature_c": round(temperature, 1),
         "previous_level": previous_level,
         "timestamp": _now_iso(),
@@ -261,6 +386,6 @@ def publish_online() -> bool:
     if client is None:
         return False
 
-    topic = f"{config.mqtt_topic_prefix}/status"
+    topic = _topic("status")
     result = client.publish(topic, "online", qos=1, retain=True)
     return result.rc == 0
