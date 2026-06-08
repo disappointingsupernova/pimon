@@ -35,6 +35,7 @@ logger = logging.getLogger("pi_temp_alerter")
 _client = None
 _discovery_sent: set[str] = set()
 _hostname = socket.gethostname()
+_first_publish_logged: bool = False
 
 
 def _topic(path: str) -> str:
@@ -287,6 +288,7 @@ def publish_reading(sensor_name: str, temperature: float) -> bool:
 
     Payload is Grafana-friendly with flat keys and ISO timestamp.
     """
+    global _first_publish_logged
     if not config.mqtt_enabled:
         return False
 
@@ -306,7 +308,16 @@ def publish_reading(sensor_name: str, temperature: float) -> bool:
     })
 
     result = client.publish(topic, payload, qos=1, retain=True)
-    return result.rc == 0
+    success = result.rc == 0
+
+    # Log the first successful publish to confirm data is flowing
+    if success and not _first_publish_logged:
+        logger.info("MQTT publishing active - first reading sent for %s", sensor_name)
+        _first_publish_logged = True
+    elif not success:
+        logger.warning("MQTT publish failed for %s (rc=%d)", sensor_name, result.rc)
+
+    return success
 
 
 def publish_system_metrics(metrics: dict) -> bool:
