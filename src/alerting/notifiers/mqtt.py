@@ -55,7 +55,15 @@ def _get_client():
         logger.warning("paho-mqtt not installed - MQTT publishing disabled")
         return None
 
-    _client = mqtt.Client(client_id=config.mqtt_client_id)
+    # paho-mqtt v2.0+ requires CallbackAPIVersion; fall back for v1.x
+    try:
+        _client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION1,
+            client_id=config.mqtt_client_id,
+        )
+    except (AttributeError, TypeError):
+        # paho-mqtt v1.x compatibility
+        _client = mqtt.Client(client_id=config.mqtt_client_id)
 
     if config.mqtt_username:
         _client.username_pw_set(config.mqtt_username, config.mqtt_password)
