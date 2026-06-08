@@ -493,6 +493,43 @@ def _cmd_backup(args: argparse.Namespace) -> None:
     print(f"Size: {tarball_path.stat().st_size / 1024:.1f} KB")
 
 
+def _cmd_export(args: argparse.Namespace) -> None:
+    """Export temperature history to CSV or JSON format."""
+    import csv as csv_mod
+    import json
+
+    if not config.database_enabled:
+        print("Database is not enabled. Cannot export history.")
+        sys.exit(1)
+
+    from src.database.models import init_db
+    from src.database.repository import get_recent_readings
+    init_db()
+
+    rows = get_recent_readings(args.lines)
+    if not rows:
+        print("No history data found.")
+        sys.exit(1)
+
+    output_path = Path(args.output) if args.output else None
+
+    if args.format == "json":
+        content = json.dumps(rows, indent=2)
+    else:
+        import io
+        buf = io.StringIO()
+        writer = csv_mod.DictWriter(buf, fieldnames=["timestamp", "sensor", "temperature_c"])
+        writer.writeheader()
+        writer.writerows(rows)
+        content = buf.getvalue()
+
+    if output_path:
+        output_path.write_text(content)
+        print(f"Exported {len(rows)} records to {output_path}")
+    else:
+        print(content)
+
+
 # =============================================================================
 # Helpers
 # =============================================================================
@@ -766,6 +803,37 @@ def main() -> None:
         help="Output directory for the tarball (default: application root)",
     )
 
+    # export
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Export temperature history to CSV or JSON",
+        description=(
+            "Export temperature readings from the database to CSV or JSON format.\n"
+            "Output is written to stdout unless -o/--output is specified."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    export_parser.add_argument(
+        "-f", "--format",
+        choices=["csv", "json"],
+        default="csv",
+        help="Output format (default: csv)",
+    )
+    export_parser.add_argument(
+        "-n", "--lines",
+        type=int,
+        default=1000,
+        metavar="COUNT",
+        help="Number of records to export (default: 1000)",
+    )
+    export_parser.add_argument(
+        "-o", "--output",
+        type=str,
+        default=None,
+        metavar="FILE",
+        help="Output file path (default: stdout)",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -783,6 +851,7 @@ def main() -> None:
         "migrate-db": _cmd_migrate_db,
         "doctor": _cmd_doctor,
         "backup": _cmd_backup,
+        "export": _cmd_export,
     }
     commands[args.command](args)
 
