@@ -80,6 +80,9 @@ class Monitor:
         # Notify systemd that startup is complete
         notify_ready()
 
+        # Send one-off startup notification if configured
+        self._send_startup_notification()
+
         logger.info(
             "Monitoring started with %d sensor(s): %s",
             len(sensors),
@@ -504,3 +507,37 @@ class Monitor:
             except Exception:
                 # Silently skip collectors that fail - they're optional
                 pass
+
+    def _send_startup_notification(self) -> None:
+        """Send a one-off notification that PiMon has started successfully."""
+        if not config.startup_notification:
+            return
+
+        import socket
+
+        hostname = socket.gethostname()
+        sensors = self._sensor_manager.sensors
+        sensor_names = ", ".join(s.name for s in sensors) if sensors else "none"
+        message = (
+            f"PiMon is running on {hostname}\n"
+            f"Sensors: {sensor_names}\n"
+            f"Poll interval: {config.poll_interval}s\n"
+            f"Dashboard: http://{config.dashboard_host}:{config.dashboard_port}"
+        )
+
+        logger.info("Sending startup notification")
+
+        # Telegram
+        if config.telegram_enabled:
+            from src.alerting.notifiers.telegram import send_telegram
+            send_telegram(message)
+
+        # Pushover
+        if config.pushover_enabled:
+            from src.alerting.notifiers.pushover import send_pushover
+            send_pushover(title="PiMon Started", message=message, level="INFO")
+
+        # MQTT
+        if config.mqtt_enabled:
+            from src.alerting.notifiers.mqtt import publish_alert
+            publish_alert("system", "INFO", 0.0)

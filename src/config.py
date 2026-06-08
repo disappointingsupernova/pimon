@@ -130,6 +130,7 @@ class Config:
         self.scheduled_reboot_enabled: bool = _bool(os.getenv("SCHEDULED_REBOOT_ENABLED", "false"))
         self.scheduled_reboot_day: str = os.getenv("SCHEDULED_REBOOT_DAY", "sunday")
         self.scheduled_reboot_hour: int = _int(os.getenv("SCHEDULED_REBOOT_HOUR"), 4)
+        self.startup_notification: bool = _bool(os.getenv("STARTUP_NOTIFICATION", "false"))
 
         # Apply low-write mode overrides to reduce SD card wear
         if self.low_write_mode:
