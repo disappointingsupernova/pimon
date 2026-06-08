@@ -333,6 +333,8 @@ class Monitor:
             (None, "src.sensors.collectors.ups", "collect_ups_stats", "service/ups/state"),
             (None, "src.sensors.collectors.smart", "collect_smart_stats", "service/smart/state"),
             (None, "src.sensors.collectors.systemd", "collect_systemd_stats", "service/systemd/state"),
+            (None, "src.sensors.collectors.ntp", "collect_ntp_stats", "service/ntp/state"),
+            (None, "src.sensors.collectors.gps", "collect_gps_stats", "service/gps/state"),
         ]
 
         for config_attr, module_path, func_name, topic_suffix in collectors:
