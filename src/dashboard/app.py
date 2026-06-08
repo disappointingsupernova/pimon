@@ -270,6 +270,27 @@ def api_history_csv():
     return jsonify({"entries": list(tail)})
 
 
+@app.route("/api/alerts")
+def api_alerts():
+    """Return recent alert history from the database."""
+    if not config.endpoint_api_enabled:
+        return Response("Endpoint disabled.", 404)
+    if not config.database_enabled:
+        return jsonify({"error": "Database not enabled"}), 400
+
+    from src.database.repository import get_recent_alerts
+    count = request.args.get("count", 50, type=int)
+    count = min(max(count, 1), 500)
+    alerts = get_recent_alerts(count)
+    return jsonify({"alerts": alerts})
+
+
+@app.route("/alerts")
+def alerts_page():
+    """Render the alert history page."""
+    return render_template("alerts.html", config=config)
+
+
 @app.route("/metrics")
 def prometheus_metrics():
     """Expose metrics in Prometheus text format."""

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiMon - Alert History</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 1.5rem;
+        }
+        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+        .nav { margin-bottom: 1.5rem; font-size: 0.85rem; }
+        .nav a { color: #3498db; text-decoration: none; margin-right: 1rem; }
+        .nav a:hover { text-decoration: underline; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid #2a2a4a; }
+        th { background: #16213e; color: #888; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+        tr:hover { background: #16213e; }
+        .level-warning { color: #f39c12; }
+        .level-critical { color: #e74c3c; }
+        .level-emergency { color: #8e44ad; }
+        .recovered { color: #27ae60; }
+        .empty { text-align: center; padding: 2rem; opacity: 0.6; }
+    </style>
+</head>
+<body>
+    <h1>Alert History</h1>
+    <div class="nav">
+        <a href="/">Dashboard</a>
+        <a href="/alerts">Alert History</a>
+    </div>
+
+    <table id="alert-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Sensor</th>
+                <th>Level</th>
+                <th>Temperature</th>
+                <th>Recovered</th>
+            </tr>
+        </thead>
+        <tbody id="alert-body">
+            <tr><td colspan="5" class="empty">Loading...</td></tr>
+        </tbody>
+    </table>
+
+    <script>
+        async function loadAlerts() {
+            try {
+                const res = await fetch('/api/alerts?count=100');
+                const data = await res.json();
+                const tbody = document.getElementById('alert-body');
+
+                if (!data.alerts || data.alerts.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty">No alerts recorded yet.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.alerts.map(a => {
+                    const levelClass = `level-${a.level.toLowerCase()}`;
+                    const time = new Date(a.timestamp + 'Z').toLocaleString();
+                    const recoveredAt = a.recovered_at
+                        ? new Date(a.recovered_at + 'Z').toLocaleString()
+                        : '';
+                    const recoveredHtml = a.recovered
+                        ? `<span class="recovered">Yes</span> <small>${recoveredAt}</small>`
+                        : 'No';
+                    return `<tr>
+                        <td>${time}</td>
+                        <td>${a.sensor}</td>
+                        <td class="${levelClass}">${a.level}</td>
+                        <td>${a.temperature_c.toFixed(1)} C</td>
+                        <td>${recoveredHtml}</td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                document.getElementById('alert-body').innerHTML =
+                    '<tr><td colspan="5" class="empty">Failed to load alerts.</td></tr>';
+            }
+        }
+
+        loadAlerts();
+        setInterval(loadAlerts, 30000);
+    </script>
+</body>
+</html>

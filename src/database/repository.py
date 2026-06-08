@@ -169,6 +169,34 @@ def store_alert(sensor_name: str, level: str, temperature_c: float) -> None:
         session.close()
 
 
+def get_recent_alerts(count: int = 50) -> list[dict]:
+    """Retrieve the most recent alert events for the dashboard."""
+    session = get_session()
+    try:
+        rows = (
+            session.query(AlertEvent)
+            .order_by(desc(AlertEvent.timestamp))
+            .limit(count)
+            .all()
+        )
+        return [
+            {
+                "timestamp": r.timestamp.isoformat() if r.timestamp else "",
+                "sensor": r.sensor_name,
+                "level": r.level,
+                "temperature_c": r.temperature_c,
+                "recovered": r.recovered,
+                "recovered_at": r.recovered_at.isoformat() if r.recovered_at else None,
+            }
+            for r in rows
+        ]
+    except Exception as exc:
+        logger.error("Failed to query alert events: %s", exc)
+        return []
+    finally:
+        session.close()
+
+
 def mark_recovery(sensor_name: str) -> None:
     """Mark the most recent unrecovered alert for a sensor as recovered."""
     session = get_session()
