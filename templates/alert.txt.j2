@@ -1,0 +1,13 @@
+[{{ level }}] {{ sensor_name }}: {{ "%.1f"|format(temperature_c) }} C
+
+Temperature alert triggered.
+
+  Sensor:      {{ sensor_name }}
+  Level:       {{ level }}
+  Temperature: {{ "%.1f"|format(temperature_c) }} C
+  Warning:     {{ thresholds.warning }} C
+  Critical:    {{ thresholds.critical }} C
+  Emergency:   {{ thresholds.emergency }} C
+  Time:        {{ timestamp }}
+
+Please investigate the thermal condition of your Raspberry Pi.

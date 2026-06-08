@@ -104,19 +104,26 @@ def send_alert_email(
     temperature: float,
 ) -> bool:
     """Send a temperature alert email. Returns True on success."""
+    from src.alerting.templates import render_alert
+
     subject = f"[PiMon] {_LEVEL_SUBJECTS.get(level, 'Alert')} - {sensor_name}"
-    plain = (
-        f"Temperature alert triggered on sensor: {sensor_name}\n"
-        f"\n"
-        f"  Level:       {level.name}\n"
-        f"  Temperature: {temperature:.1f} C\n"
-        f"  Thresholds:  Warning={config.temp_warning} C, "
-        f"Critical={config.temp_critical} C, "
-        f"Emergency={config.temp_emergency} C\n"
-        f"\n"
-        f"Please investigate the thermal condition of your Raspberry Pi.\n"
-    )
-    html = _html_alert(level, sensor_name, temperature)
+    plain, html = render_alert(level.name, sensor_name, temperature)
+
+    # Fall back to built-in if template rendering returned None
+    if plain is None:
+        plain = (
+            f"Temperature alert triggered on sensor: {sensor_name}\n"
+            f"\n"
+            f"  Level:       {level.name}\n"
+            f"  Temperature: {temperature:.1f} C\n"
+            f"  Thresholds:  Warning={config.temp_warning} C, "
+            f"Critical={config.temp_critical} C, "
+            f"Emergency={config.temp_emergency} C\n"
+            f"\n"
+            f"Please investigate the thermal condition of your Raspberry Pi.\n"
+        )
+    if html is None:
+        html = _html_alert(level, sensor_name, temperature)
     return _send(recipients, subject, plain, html)
 
 
@@ -126,16 +133,23 @@ def send_recovery_email(
     previous_level: AlertLevel,
 ) -> bool:
     """Send a recovery notification email. Returns True on success."""
+    from src.alerting.templates import render_recovery
+
     subject = f"[PiMon] RECOVERED: {sensor_name} back to normal"
-    plain = (
-        f"Temperature has returned to normal on sensor: {sensor_name}\n"
-        f"\n"
-        f"  Current temperature: {temperature:.1f} C\n"
-        f"  Previous level:      {previous_level.name}\n"
-        f"\n"
-        f"No further action required.\n"
-    )
-    html = _html_recovery(sensor_name, temperature, previous_level)
+    plain, html = render_recovery(sensor_name, temperature, previous_level.name)
+
+    if plain is None:
+        plain = (
+            f"Temperature has returned to normal on sensor: {sensor_name}\n"
+            f"\n"
+            f"  Current temperature: {temperature:.1f} C\n"
+            f"  Previous level:      {previous_level.name}\n"
+            f"\n"
+            f"No further action required.\n"
+        )
+    if html is None:
+        html = _html_recovery(sensor_name, temperature, previous_level)
+
     all_recipients = list(set(
         config.recipients_warning
         + config.recipients_critical
