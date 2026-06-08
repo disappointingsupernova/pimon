@@ -65,6 +65,13 @@ class Monitor:
         if removed:
             logger.info("Pruned %d old CSV file(s)", removed)
 
+        # Prune old database records on startup
+        if config.database_enabled and config.database_retention_days > 0:
+            from src.database.repository import prune_old_records
+            db_removed = prune_old_records(config.database_retention_days)
+            if db_removed:
+                logger.info("Pruned %d old database record(s)", db_removed)
+
         sensors = self._sensor_manager.sensors
         logger.info(
             "Monitoring started with %d sensor(s): %s",
@@ -139,11 +146,26 @@ class Monitor:
             # Update dashboard in-memory buffer
             record_reading(reading.sensor_name, reading.temperature_c)
 
-            # Fan control (needs per-reading evaluation)
-            if self._fan_update:
-                self._fan_update(reading.temperature_c)
+        # Fan control using max temperature (or configured sensor)
+        if self._fan_update and successful:
+            if config.fan_sensor == "max":
+                fan_temp = max(t for _, t in successful)
+            else:
+                fan_temp = next(
+                    (t for s, t in successful if s == config.fan_sensor),
+                    max(t for _, t in successful) if successful else 0.0,
+                )
+            self._fan_update(fan_temp)
+
+        for reading in readings:
+            if not reading.available:
+                continue
 
             # Rate-of-change check
+            self._check_rate_of_change(reading)
+
+            # Threshold evaluation and alerting
+            self._evaluate_and_alert(reading)
             self._check_rate_of_change(reading)
 
             # Threshold evaluation and alerting
@@ -194,6 +216,9 @@ class Monitor:
 
         # Send daily digest once per day
         self._check_daily_digest()
+
+        # Check scheduled reboot
+        self._check_scheduled_reboot()
 
     def _evaluate_and_alert(self, reading: SensorReading) -> None:
         """Evaluate thresholds and dispatch alerts/recovery for a reading."""
@@ -304,8 +329,30 @@ class Monitor:
         logger.info("Sending daily digest")
         send_daily_digest()
 
-    def _startup_health_check(self) -> None:
-        """Run a system health check on startup and log the results.
+    def _check_scheduled_reboot(self) -> None:
+        """Reboot the Pi on a scheduled day/hour if configured."""
+        if not config.scheduled_reboot_enabled:
+            return
+
+        import subprocess
+        now = datetime.now()
+        day_name = now.strftime("%A").lower()
+
+        if day_name != config.scheduled_reboot_day.lower():
+            return
+        if now.hour != config.scheduled_reboot_hour:
+            return
+
+        # Only reboot once (check we haven't already rebooted this hour)
+        reboot_key = f"_rebooted_{now.date()}_{now.hour}"
+        if hasattr(self, reboot_key):
+            return
+        setattr(self, reboot_key, True)
+
+        logger.warning("Scheduled reboot triggered (day=%s, hour=%d)", day_name, now.hour)
+        subprocess.run(["sudo", "reboot"], capture_output=True)
+
+    def _startup_health_check(self) -> None:        """Run a system health check on startup and log the results.
 
         Verifies that critical subsystems are operational before entering
         the main poll loop. Logs warnings for any issues detected.

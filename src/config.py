@@ -102,6 +102,7 @@ class Config:
         _default_db = "sqlite:///" + str(Path(__file__).resolve().parent.parent / "data" / "pimon.db")
         self.database_url: str = os.getenv("DATABASE_URL", _default_db)
         self.database_enabled: bool = _bool(os.getenv("DATABASE_ENABLED", "true"))
+        self.database_retention_days: int = _int(os.getenv("DATABASE_RETENTION_DAYS"), 90)
 
         # Notifications
         self.webhook_enabled: bool = _bool(os.getenv("WEBHOOK_ENABLED", "false"))
@@ -125,6 +126,10 @@ class Config:
         # Advanced
         self.dry_run: bool = _bool(os.getenv("DRY_RUN", "false"))
         self.low_write_mode: bool = _bool(os.getenv("LOW_WRITE_MODE", "false"))
+        self.prometheus_prefix: str = os.getenv("PROMETHEUS_PREFIX", "pimon")
+        self.scheduled_reboot_enabled: bool = _bool(os.getenv("SCHEDULED_REBOOT_ENABLED", "false"))
+        self.scheduled_reboot_day: str = os.getenv("SCHEDULED_REBOOT_DAY", "sunday")
+        self.scheduled_reboot_hour: int = _int(os.getenv("SCHEDULED_REBOOT_HOUR"), 4)
 
         # Apply low-write mode overrides to reduce SD card wear
         if self.low_write_mode:
@@ -137,6 +142,10 @@ class Config:
         self.fan_gpio_pin: int = _int(os.getenv("FAN_GPIO_PIN"), 14)
         self.fan_on_threshold: float = _float(os.getenv("FAN_ON_THRESHOLD"), 55.0)
         self.fan_off_threshold: float = _float(os.getenv("FAN_OFF_THRESHOLD"), 45.0)
+        self.fan_sensor: str = os.getenv("FAN_SENSOR", "max")  # 'max' or specific sensor name
+
+        # Sensor aliases (friendly names for display)
+        self.sensor_aliases: dict[str, str] = self._load_sensor_aliases()
 
         # External service collectors (auto-detected unless explicitly disabled)
         # Set to 'false' to disable even if the service is detected
@@ -211,6 +220,32 @@ class Config:
         if value is None:
             return None  # Not set - will auto-detect
         return _bool(value)
+
+    def _load_sensor_aliases(self) -> dict[str, str]:
+        """Load sensor aliases from environment variables.
+
+        Looks for SENSOR_ALIAS_<NAME>=Friendly Name patterns.
+        """
+        aliases: dict[str, str] = {}
+        prefix = "SENSOR_ALIAS_"
+        for key, value in os.environ.items():
+            if key.startswith(prefix) and value:
+                sensor_name = key[len(prefix):].lower()
+                aliases[sensor_name] = value.strip()
+        return aliases
+
+    def get_sensor_display_name(self, sensor_name: str) -> str:
+        """Return the display name for a sensor (alias if set, otherwise raw name)."""
+        return self.sensor_aliases.get(sensor_name.lower(), sensor_name)
+
+    @staticmethod
+    def get_pi_model() -> str:
+        """Read the Raspberry Pi model from /proc/device-tree/model."""
+        try:
+            model = Path("/proc/device-tree/model").read_text().strip().rstrip("\x00")
+            return model
+        except (OSError, ValueError):
+            return "Unknown"
 
     def _load_sensor_overrides(self) -> dict[str, dict[str, float]]:
         """Load per-sensor threshold overrides from environment variables.

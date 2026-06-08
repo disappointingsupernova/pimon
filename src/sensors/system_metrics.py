@@ -81,6 +81,7 @@ def collect_full_metrics() -> dict:
         "network_tx_mb": net[1],
         "process_count": _process_count(),
         "uptime_hours": _uptime_hours(),
+        "pi_model": _pi_model(),
         "throttled": _parse_throttled(flags),
         "throttle_flags": flags,
     }
@@ -238,3 +239,11 @@ def _uptime_hours() -> float:
         return round(float(raw) / 3600, 1)
     except (OSError, ValueError, IndexError):
         return 0.0
+
+
+def _pi_model() -> str:
+    """Read the Raspberry Pi model from /proc/device-tree/model."""
+    try:
+        return Path("/proc/device-tree/model").read_text().strip().rstrip("\x00")
+    except (OSError, ValueError):
+        return "Unknown"

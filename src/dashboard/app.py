@@ -233,38 +233,39 @@ def prometheus_metrics():
     from src.sensors.system_metrics import collect_metrics
 
     lines = []
-    lines.append("# HELP pimon_uptime_seconds Uptime in seconds")
-    lines.append("# TYPE pimon_uptime_seconds gauge")
+    p = config.prometheus_prefix
+    lines.append(f"# HELP {p}_uptime_seconds Uptime in seconds")
+    lines.append(f"# TYPE {p}_uptime_seconds gauge")
     uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
-    lines.append(f"pimon_uptime_seconds {uptime:.1f}")
+    lines.append(f"{p}_uptime_seconds {uptime:.1f}")
 
     if _latest_sensor_data:
-        lines.append("# HELP pimon_temperature_celsius Current temperature")
-        lines.append("# TYPE pimon_temperature_celsius gauge")
+        lines.append(f"# HELP {p}_temperature_celsius Current temperature")
+        lines.append(f"# TYPE {p}_temperature_celsius gauge")
         for sensor_data in _latest_sensor_data:
             if sensor_data.get("available", False):
                 safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', sensor_data["sensor"])
                 lines.append(
-                    f'pimon_temperature_celsius{{sensor="{safe_name}"}} '
+                    f'{p}_temperature_celsius{{sensor="{safe_name}"}} '
                     f"{sensor_data['temperature_c']:.1f}"
                 )
 
     metrics = collect_metrics()
-    lines.append("# HELP pimon_cpu_usage_percent CPU usage percentage")
-    lines.append("# TYPE pimon_cpu_usage_percent gauge")
-    lines.append(f"pimon_cpu_usage_percent {metrics.cpu_percent}")
+    lines.append(f"# HELP {p}_cpu_usage_percent CPU usage percentage")
+    lines.append(f"# TYPE {p}_cpu_usage_percent gauge")
+    lines.append(f"{p}_cpu_usage_percent {metrics.cpu_percent}")
 
-    lines.append("# HELP pimon_memory_usage_percent Memory usage percentage")
-    lines.append("# TYPE pimon_memory_usage_percent gauge")
-    lines.append(f"pimon_memory_usage_percent {metrics.memory_percent}")
+    lines.append(f"# HELP {p}_memory_usage_percent Memory usage percentage")
+    lines.append(f"# TYPE {p}_memory_usage_percent gauge")
+    lines.append(f"{p}_memory_usage_percent {metrics.memory_percent}")
 
-    lines.append("# HELP pimon_disk_usage_percent Disk usage percentage")
-    lines.append("# TYPE pimon_disk_usage_percent gauge")
-    lines.append(f"pimon_disk_usage_percent {metrics.disk_percent}")
+    lines.append(f"# HELP {p}_disk_usage_percent Disk usage percentage")
+    lines.append(f"# TYPE {p}_disk_usage_percent gauge")
+    lines.append(f"{p}_disk_usage_percent {metrics.disk_percent}")
 
-    lines.append("# HELP pimon_throttled Whether the Pi is throttled")
-    lines.append("# TYPE pimon_throttled gauge")
-    lines.append(f"pimon_throttled {1 if metrics.throttled else 0}")
+    lines.append(f"# HELP {p}_throttled Whether the Pi is throttled")
+    lines.append(f"# TYPE {p}_throttled gauge")
+    lines.append(f"{p}_throttled {1 if metrics.throttled else 0}")
 
     return Response("\n".join(lines) + "\n", mimetype="text/plain; charset=utf-8")
 
