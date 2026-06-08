@@ -36,7 +36,7 @@ Examples:
   python main.py config         Display all settings (secrets redacted)
   sudo python main.py update    Pull latest code and restart service
 
-Documentation: https://github.com/your-user/Pi-Temperature-Alerter
+Documentation: https://github.com/disappointingsupernova/pimon
 """
 
 

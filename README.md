@@ -19,7 +19,7 @@ A comprehensive Raspberry Pi system monitoring, alerting, and service statistics
 
 ```bash
 git clone https://github.com/disapointingsupernova/Pi-Temperature-Alerter.git
-cd Pi-Temperature-Alerter
+cd pimon
 sudo ./install.sh
 sudo nano /opt/pimon/.env      # or wherever it installed
 sudo systemctl start pimon
@@ -123,8 +123,8 @@ The application installs to `/opt/pimon` with a dedicated system user, systemd s
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-user/Pi-Temperature-Alerter.git
-cd Pi-Temperature-Alerter
+git clone https://github.com/disappointingsupernova/pimon.git
+cd pimon
 
 # Run the installer (requires root)
 sudo ./install.sh
@@ -193,8 +193,8 @@ For local development and testing (not production):
 
 ```bash
 # Clone and enter the repository
-git clone https://github.com/your-user/Pi-Temperature-Alerter.git
-cd Pi-Temperature-Alerter
+git clone https://github.com/disappointingsupernova/pimon.git
+cd pimon
 
 # Create virtual environment
 python3 -m venv venv
