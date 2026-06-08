@@ -9,20 +9,44 @@
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #1a1a2e;
+            --card-bg: #16213e;
+            --text: #eee;
+            --text-muted: #888;
+            --border: #0f3460;
+        }
+        [data-theme="light"] {
+            --bg: #f0f2f5;
+            --card-bg: #ffffff;
+            --text: #222;
+            --text-muted: #666;
+            --border: #ddd;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
+            background: var(--bg);
+            color: var(--text);
             padding: 1.5rem;
         }
         h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
         h2 { margin: 1.5rem 0 0.75rem; font-size: 1.1rem; opacity: 0.8; }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .theme-toggle {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
         .card {
-            background: #16213e;
+            background: var(--card-bg);
             border-radius: 8px;
             padding: 1.2rem;
-            border-left: 4px solid #0f3460;
+            border-left: 4px solid var(--border);
         }
         .card.warning { border-left-color: #f39c12; }
         .card.critical { border-left-color: #e74c3c; }
@@ -31,12 +55,12 @@
         .card h3 { font-size: 0.8rem; margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
         .card .value { font-size: 2rem; font-weight: bold; }
         .card .sub { font-size: 0.75rem; opacity: 0.6; margin-top: 0.2rem; }
-        .chart-container { background: #16213e; border-radius: 8px; padding: 1.2rem; margin-bottom: 1.5rem; }
+        .chart-container { background: var(--card-bg); border-radius: 8px; padding: 1.2rem; margin-bottom: 1.5rem; }
         .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
         .controls button {
-            background: #0f3460;
+            background: var(--border);
             border: none;
-            color: #eee;
+            color: var(--text);
             padding: 0.4rem 0.8rem;
             border-radius: 4px;
             cursor: pointer;
@@ -49,11 +73,21 @@
         .th-warn { background: rgba(243, 156, 18, 0.2); color: #f39c12; }
         .th-crit { background: rgba(231, 76, 60, 0.2); color: #e74c3c; }
         .th-emer { background: rgba(142, 68, 173, 0.2); color: #8e44ad; }
+        .nav { margin-bottom: 1rem; font-size: 0.85rem; }
+        .nav a { color: #3498db; text-decoration: none; margin-right: 1rem; }
+        .nav a:hover { text-decoration: underline; }
         .footer { text-align: right; font-size: 0.7rem; opacity: 0.4; margin-top: 1rem; }
     </style>
 </head>
 <body>
-    <h1>Pi Temperature Alerter</h1>
+    <div class="header">
+        <h1>PiMon Dashboard</h1>
+        <button class="theme-toggle" onclick="toggleTheme()">Toggle Theme</button>
+    </div>
+    <div class="nav">
+        <a href="/">Dashboard</a>
+        <a href="/alerts">Alert History</a>
+    </div>
 
     <div class="thresholds">
         <span class="th-warn">Warning: {{ config.temp_warning }} C</span>
@@ -91,6 +125,18 @@
     <p class="footer" id="last-updated"></p>
 
     <script>
+        // Theme toggle with localStorage persistence
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('pimon-theme', next);
+        }
+        (function() {
+            const saved = localStorage.getItem('pimon-theme');
+            if (saved) document.documentElement.setAttribute('data-theme', saved);
+        })();
+
         const thresholds = {
             warning: {{ config.temp_warning }},
             critical: {{ config.temp_critical }},
