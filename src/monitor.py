@@ -463,74 +463,38 @@ class Monitor:
             logger.info("Startup health check passed")
 
     def _publish_collector_stats(self) -> None:
-        """Publish external service collector stats to MQTT.
+        """Run all service collectors, publish to MQTT, and check alert thresholds.
 
         Services are auto-detected: if the service is running and responsive,
         stats are published. Set COLLECTOR_*_ENABLED=false in .env to explicitly
         disable a collector even if the service is present.
         """
+        from src.sensors.collectors.registry import collect_all, get_numeric_metrics
         from src.alerting.notifiers.mqtt import _get_client, _topic, _now_iso
         import json
 
+        results = collect_all()
+
         client = _get_client()
-        if client is None:
-            return
 
-        # Registry of all collectors: (config_attr, module_path, function_name, topic_suffix)
-        collectors = [
-            ("collector_fr24_enabled", "src.sensors.collectors.fr24feed", "collect_fr24_stats", "service/fr24feed/state"),
-            ("collector_readsb_enabled", "src.sensors.collectors.readsb", "collect_readsb_stats", "service/readsb/state"),
-            (None, "src.sensors.collectors.pihole", "collect_pihole_stats", "service/pihole/state"),
-            (None, "src.sensors.collectors.adguard", "collect_adguard_stats", "service/adguard/state"),
-            (None, "src.sensors.collectors.unbound", "collect_unbound_stats", "service/unbound/state"),
-            (None, "src.sensors.collectors.wireguard", "collect_wireguard_stats", "service/wireguard/state"),
-            (None, "src.sensors.collectors.tailscale", "collect_tailscale_stats", "service/tailscale/state"),
-            (None, "src.sensors.collectors.nginx", "collect_nginx_stats", "service/nginx/state"),
-            (None, "src.sensors.collectors.plex", "collect_plex_stats", "service/plex/state"),
-            (None, "src.sensors.collectors.jellyfin", "collect_jellyfin_stats", "service/jellyfin/state"),
-            (None, "src.sensors.collectors.zigbee2mqtt", "collect_zigbee2mqtt_stats", "service/zigbee2mqtt/state"),
-            (None, "src.sensors.collectors.influxdb", "collect_influxdb_stats", "service/influxdb/state"),
-            (None, "src.sensors.collectors.docker", "collect_docker_stats", "service/docker/state"),
-            (None, "src.sensors.collectors.dump1090", "collect_dump1090_stats", "service/dump1090/state"),
-            (None, "src.sensors.collectors.ups", "collect_ups_stats", "service/ups/state"),
-            (None, "src.sensors.collectors.smart", "collect_smart_stats", "service/smart/state"),
-            (None, "src.sensors.collectors.systemd", "collect_systemd_stats", "service/systemd/state"),
-            (None, "src.sensors.collectors.ntp", "collect_ntp_stats", "service/ntp/state"),
-            (None, "src.sensors.collectors.gps", "collect_gps_stats", "service/gps/state"),
-        ]
+        for service_name, stats in results.items():
+            # Log first detection
+            detection_key = f"_detected_{service_name}"
+            if not hasattr(self, detection_key):
+                logger.info("Auto-detected %s service, publishing stats", service_name)
+                setattr(self, detection_key, True)
 
-        for config_attr, module_path, func_name, topic_suffix in collectors:
-            # Check if explicitly disabled via config
-            if config_attr:
-                state = getattr(config, config_attr, None)
-                if state is False:
-                    continue
+            # Publish to MQTT
+            if client is not None:
+                from src.alerting.notifiers.mqtt import publish_ha_discovery_for_collector
+                publish_ha_discovery_for_collector(service_name, stats)
+                payload = dict(stats)
+                payload["timestamp"] = _now_iso()
+                topic = _topic(f"service/{service_name}/state")
+                client.publish(topic, json.dumps(payload), qos=1, retain=True)
 
-            try:
-                import importlib
-                mod = importlib.import_module(module_path)
-                collect_fn = getattr(mod, func_name)
-                stats = collect_fn()
-
-                if stats:
-                    # Log first detection
-                    detection_key = f"_detected_{topic_suffix}"
-                    if not hasattr(self, detection_key):
-                        service_name = topic_suffix.split("/")[1]
-                        logger.info("Auto-detected %s service, publishing stats", service_name)
-                        setattr(self, detection_key, True)
-
-                    # Send HA auto-discovery for all fields in this collector
-                    from src.alerting.notifiers.mqtt import publish_ha_discovery_for_collector
-                    service_name = topic_suffix.split("/")[1]
-                    publish_ha_discovery_for_collector(service_name, stats)
-
-                    stats["timestamp"] = _now_iso()
-                    topic = _topic(topic_suffix)
-                    client.publish(topic, json.dumps(stats), qos=1, retain=True)
-            except Exception:
-                # Silently skip collectors that fail - they're optional
-                pass
+            # Check collector alert thresholds
+            self._check_collector_alerts(service_name, stats)
 
     def _send_startup_notification(self) -> None:
         """Send a one-off notification that PiMon has started successfully."""
@@ -604,5 +568,61 @@ class Monitor:
                     AlertLevel.WARNING,
                     f"system/{metric_name}",
                     current_value,
+                    recipients,
+                )
+
+    def _check_collector_alerts(self, service_name: str, stats: dict) -> None:
+        """Check collector metrics against configured thresholds.
+
+        Thresholds are defined in .env as ALERT_<SERVICE>_<METRIC>=<value>.
+        For example: ALERT_DOCKER_CONTAINERS_STOPPED=1, ALERT_UPS_BATTERY_CHARGE=20.
+        A value of 0 means disabled. Alerts fire when the metric exceeds the
+        threshold (or drops below for 'min' prefixed thresholds).
+        """
+        import os
+
+        now = datetime.now(timezone.utc)
+        prefix = f"ALERT_{service_name.upper()}_"
+
+        for key, value in stats.items():
+            if not isinstance(value, (int, float)):
+                continue
+
+            # Check for threshold env var
+            env_key = f"{prefix}{key.upper()}"
+            threshold_str = os.getenv(env_key, "")
+            if not threshold_str:
+                continue
+
+            try:
+                threshold = float(threshold_str)
+            except ValueError:
+                continue
+
+            if threshold <= 0:
+                continue
+
+            # Alert if value exceeds threshold
+            if value < threshold:
+                continue
+
+            # Respect cooldown
+            cooldown_key = f"_collector_alert_{service_name}_{key}"
+            last_alerted = getattr(self, cooldown_key, None)
+            if last_alerted and (now - last_alerted).total_seconds() < config.alert_cooldown:
+                continue
+
+            setattr(self, cooldown_key, now)
+            logger.warning(
+                "COLLECTOR ALERT: %s/%s at %s (threshold: %s)",
+                service_name, key, value, threshold,
+            )
+
+            recipients = self._evaluator.get_recipients(AlertLevel.WARNING)
+            if recipients:
+                dispatch_alert(
+                    AlertLevel.WARNING,
+                    f"service/{service_name}/{key}",
+                    float(value),
                     recipients,
                 )

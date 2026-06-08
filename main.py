@@ -355,18 +355,20 @@ def _cmd_migrate_db(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def _cmd_doctor(_args: argparse.Namespace) -> None:
-    """Run diagnostic checks on sensors, SMTP, MQTT, DB, disk, and services."""
+def _cmd_doctor(args: argparse.Namespace) -> None:
+    """Run comprehensive diagnostic checks on all PiMon subsystems."""
     import shutil
     import smtplib
+    import platform
 
     from src.logger import setup_logging
     setup_logging()
 
     print("PiMon Doctor")
-    print("=" * 50)
+    print("=" * 60)
     passed = 0
     failed = 0
+    warnings = 0
 
     def _check(name: str, ok: bool, detail: str = "") -> None:
         nonlocal passed, failed
@@ -377,6 +379,25 @@ def _cmd_doctor(_args: argparse.Namespace) -> None:
             passed += 1
         else:
             failed += 1
+
+    def _warn(name: str, detail: str = "") -> None:
+        nonlocal warnings
+        suffix = f" ({detail})" if detail else ""
+        print(f"  [WARN] {name}{suffix}")
+        warnings += 1
+
+    # System info
+    print("\nSystem")
+    from src import __version__
+    print(f"  PiMon version:  {__version__}")
+    print(f"  Python version: {platform.python_version()}")
+    print(f"  Platform:       {platform.platform()}")
+    print(f"  Architecture:   {platform.machine()}")
+
+    # Configuration validation
+    print("\nConfiguration")
+    errors = config.validate()
+    _check("Configuration valid", len(errors) == 0, "; ".join(errors) if errors else "")
 
     # Sensors
     print("\nSensors")
@@ -396,12 +417,23 @@ def _cmd_doctor(_args: argparse.Namespace) -> None:
             from src.database.models import init_db, get_session
             init_db()
             session = get_session()
+            session.execute(__import__("sqlalchemy").text("SELECT 1"))
             session.close()
             _check("Database connection", True, config.database_url.split("://")[0])
         except Exception as exc:
             _check("Database connection", False, str(exc))
+
+        # Check table counts
+        try:
+            from src.database.repository import get_recent_readings, get_recent_alerts
+            readings_count = len(get_recent_readings(1))
+            alerts_count = len(get_recent_alerts(1))
+            _check("Database has data", readings_count > 0 or alerts_count > 0,
+                   f"{readings_count} readings, {alerts_count} alerts")
+        except Exception:
+            _warn("Database data check", "could not query")
     else:
-        _check("Database enabled", False, "DATABASE_ENABLED=false")
+        _warn("Database", "DATABASE_ENABLED=false")
 
     # SMTP
     print("\nSMTP")
@@ -415,8 +447,10 @@ def _cmd_doctor(_args: argparse.Namespace) -> None:
             _check("SMTP connection", True, f"{config.smtp_host}:{config.smtp_port}")
         except Exception as exc:
             _check("SMTP connection", False, str(exc))
+        all_recip = config.recipients_warning + config.recipients_critical + config.recipients_emergency
+        _check("Recipients configured", len(all_recip) > 0, f"{len(set(all_recip))} unique")
     else:
-        _check("SMTP configured", False, "SMTP_HOST or EMAIL_FROM not set")
+        _warn("SMTP", "SMTP_HOST or EMAIL_FROM not set")
 
     # MQTT
     print("\nMQTT")
@@ -428,18 +462,34 @@ def _cmd_doctor(_args: argparse.Namespace) -> None:
         except Exception as exc:
             _check("MQTT connection", False, str(exc))
     else:
-        _check("MQTT enabled", False, "MQTT_ENABLED=false")
+        _warn("MQTT", "MQTT_ENABLED=false")
 
-    # Disk
-    print("\nDisk")
+    # Notification channels
+    print("\nNotification Channels")
+    channels = [
+        ("Webhook", config.webhook_enabled),
+        ("Telegram", config.telegram_enabled),
+        ("Pushover", config.pushover_enabled),
+        ("MQTT alerts", config.mqtt_enabled),
+    ]
+    enabled_channels = [name for name, enabled in channels if enabled]
+    if enabled_channels:
+        print(f"  Enabled: {', '.join(enabled_channels)}")
+    else:
+        _warn("No notification channels enabled besides email")
+
+    # Disk and filesystem
+    print("\nFilesystem")
     try:
         usage = shutil.disk_usage("/")
         pct = (usage.used / usage.total) * 100
-        _check("Disk space", pct < 90, f"{pct:.1f}% used")
+        free_gb = (usage.total - usage.used) / (1024**3)
+        _check("Disk space", pct < 90, f"{pct:.1f}% used, {free_gb:.1f} GB free")
+        if pct > 80:
+            _warn("Disk usage above 80%", f"{pct:.1f}%")
     except OSError:
-        _check("Disk space", True, "unable to check")
+        _warn("Disk space", "unable to check")
 
-    # Writable directories
     for d in ["logs", "data"]:
         dir_path = Path(__file__).resolve().parent / d
         if dir_path.exists():
@@ -448,8 +498,51 @@ def _cmd_doctor(_args: argparse.Namespace) -> None:
         else:
             _check(f"Directory exists: {d}/", False, "missing")
 
+    # Service collectors
+    print("\nService Collectors")
+    from src.sensors.collectors.registry import collect_all
+    collector_results = collect_all()
+    if collector_results:
+        for service_name, stats in collector_results.items():
+            metric_count = len([v for v in stats.values() if isinstance(v, (int, float, bool))])
+            _check(f"Collector: {service_name}", True, f"{metric_count} metrics")
+    else:
+        print("  No services auto-detected (this is normal if none are installed)")
+
+    # Templates
+    print("\nTemplates")
+    template_dir = Path(__file__).resolve().parent / "templates"
+    if template_dir.exists():
+        templates = list(template_dir.glob("*.j2"))
+        _check("Alert templates", len(templates) > 0, f"{len(templates)} template(s)")
+    else:
+        _warn("Templates directory", "missing")
+
+    # Test suite
+    print("\nTest Suite")
+    test_dir = Path(__file__).resolve().parent / "tests"
+    if test_dir.exists():
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=no", "--no-header"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(Path(__file__).resolve().parent),
+            )
+            # Parse output for pass/fail counts
+            last_line = result.stdout.strip().split("\n")[-1] if result.stdout.strip() else ""
+            _check("Test suite", result.returncode == 0, last_line)
+        except subprocess.TimeoutExpired:
+            _check("Test suite", False, "timed out after 120s")
+        except (OSError, FileNotFoundError):
+            _warn("Test suite", "pytest not installed")
+    else:
+        _warn("Test suite", "tests/ directory not found")
+
     # Summary
-    print(f"\nResults: {passed} passed, {failed} failed")
+    print(f"\n{'=' * 60}")
+    print(f"Results: {passed} passed, {failed} failed, {warnings} warnings")
     if failed:
         sys.exit(1)
 

@@ -293,10 +293,11 @@ def alerts_page():
 
 @app.route("/metrics")
 def prometheus_metrics():
-    """Expose metrics in Prometheus text format."""
+    """Expose metrics in Prometheus text format including service collectors."""
     if not config.endpoint_metrics_enabled:
         return Response("Endpoint disabled.", 404)
     from src.sensors.system_metrics import collect_metrics
+    from src.sensors.collectors.registry import get_cached_results, get_numeric_metrics
 
     lines = []
     p = config.prometheus_prefix
@@ -332,6 +333,20 @@ def prometheus_metrics():
     lines.append(f"# HELP {p}_throttled Whether the Pi is throttled")
     lines.append(f"# TYPE {p}_throttled gauge")
     lines.append(f"{p}_throttled {1 if metrics.throttled else 0}")
+
+    # Service collector metrics
+    collector_results = get_cached_results()
+    if collector_results:
+        for service_name, stats in collector_results.items():
+            numeric = get_numeric_metrics(stats)
+            safe_service = re.sub(r'[^a-zA-Z0-9_]', '_', service_name)
+            for key, value in numeric.items():
+                safe_key = re.sub(r'[^a-zA-Z0-9_]', '_', key)
+                metric_name = f"{p}_service_{safe_service}_{safe_key}"
+                if isinstance(value, bool):
+                    lines.append(f"{metric_name} {1 if value else 0}")
+                else:
+                    lines.append(f"{metric_name} {value}")
 
     return Response("\n".join(lines) + "\n", mimetype="text/plain; charset=utf-8")
 

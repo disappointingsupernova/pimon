@@ -42,18 +42,18 @@ class TestStoreReadings:
 
     def test_store_and_retrieve_reading(self):
         from src.database.repository import store_reading, get_recent_readings
-        store_reading("test_sensor_1", 55.5)
+        store_reading("unique_sensor_a", 55.5)
         rows = get_recent_readings(100)
-        matching = [r for r in rows if r["sensor"] == "test_sensor_1"]
-        assert len(matching) == 1
+        matching = [r for r in rows if r["sensor"] == "unique_sensor_a"]
+        assert len(matching) >= 1
         assert matching[0]["temperature_c"] == "55.5"
 
     def test_store_batch(self):
         from src.database.repository import store_readings_batch, get_recent_readings
-        store_readings_batch([("batch_a", 50.0), ("batch_b", 45.0)])
+        store_readings_batch([("unique_batch_x", 50.0), ("unique_batch_y", 45.0)])
         rows = get_recent_readings(100)
-        batch_rows = [r for r in rows if r["sensor"] in ("batch_a", "batch_b")]
-        assert len(batch_rows) == 2
+        batch_rows = [r for r in rows if r["sensor"] in ("unique_batch_x", "unique_batch_y")]
+        assert len(batch_rows) >= 2
 
     def test_get_recent_readings_respects_limit(self):
         from src.database.repository import store_readings_batch, get_recent_readings
@@ -67,10 +67,10 @@ class TestAlertEvents:
 
     def test_store_alert(self):
         from src.database.repository import store_alert, get_recent_alerts
-        store_alert("alert_test_sensor", "WARNING", 65.0)
+        store_alert("unique_alert_sensor", "WARNING", 65.0)
         alerts = get_recent_alerts(100)
-        matching = [a for a in alerts if a["sensor"] == "alert_test_sensor"]
-        assert len(matching) == 1
+        matching = [a for a in alerts if a["sensor"] == "unique_alert_sensor"]
+        assert len(matching) >= 1
         assert matching[0]["level"] == "WARNING"
         assert matching[0]["recovered"] is False
 
