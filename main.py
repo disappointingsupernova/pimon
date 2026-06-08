@@ -454,6 +454,45 @@ def _cmd_doctor(_args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def _cmd_backup(args: argparse.Namespace) -> None:
+    """Create a tarball backup of the SQLite database and .env file."""
+    import tarfile
+    from datetime import datetime as _dt
+
+    app_dir = _INSTALL_DIR if _INSTALL_DIR.exists() else _APP_DIR
+    timestamp = _dt.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = Path(args.output) if args.output else app_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    tarball_path = output_dir / f"pimon_backup_{timestamp}.tar.gz"
+
+    files_to_backup: list[tuple[Path, str]] = []
+
+    # .env file
+    env_path = app_dir / ".env"
+    if env_path.exists():
+        files_to_backup.append((env_path, ".env"))
+
+    # SQLite database
+    if config.database_url.startswith("sqlite"):
+        db_path = Path(config.database_url.replace("sqlite:///", ""))
+        if not db_path.is_absolute():
+            db_path = app_dir / db_path
+        if db_path.exists():
+            files_to_backup.append((db_path, f"data/{db_path.name}"))
+
+    if not files_to_backup:
+        print("Nothing to back up.")
+        sys.exit(1)
+
+    with tarfile.open(tarball_path, "w:gz") as tar:
+        for file_path, arcname in files_to_backup:
+            tar.add(str(file_path), arcname=arcname)
+            print(f"  Added: {arcname}")
+
+    print(f"\nBackup saved to: {tarball_path}")
+    print(f"Size: {tarball_path.stat().st_size / 1024:.1f} KB")
+
+
 # =============================================================================
 # Helpers
 # =============================================================================
@@ -709,6 +748,24 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # backup
+    backup_parser = subparsers.add_parser(
+        "backup",
+        help="Create a tarball backup of database and configuration",
+        description=(
+            "Create a compressed tarball (.tar.gz) containing the SQLite\n"
+            "database file and .env configuration for safe off-device storage."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    backup_parser.add_argument(
+        "-o", "--output",
+        type=str,
+        default=None,
+        metavar="DIR",
+        help="Output directory for the tarball (default: application root)",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -725,6 +782,7 @@ def main() -> None:
         "update": _cmd_update,
         "migrate-db": _cmd_migrate_db,
         "doctor": _cmd_doctor,
+        "backup": _cmd_backup,
     }
     commands[args.command](args)
 
