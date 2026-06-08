@@ -223,6 +223,8 @@ class Monitor:
                     metrics.disk_percent,
                     metrics.throttled,
                 )
+                # Check system metric thresholds
+                self._check_metric_alerts(metrics)
 
             if self._mqtt_publish:
                 for sensor_name, temp in successful:
@@ -563,3 +565,44 @@ class Monitor:
         if config.mqtt_enabled:
             from src.alerting.notifiers.mqtt import publish_alert
             publish_alert("system", "INFO", 0.0)
+
+    def _check_metric_alerts(self, metrics) -> None:
+        """Check system metrics against configured thresholds and alert if exceeded.
+
+        Each metric (CPU, memory, disk) is independently configurable.
+        A value of 0 means the alert is disabled for that metric.
+        Respects the global alert cooldown to avoid spamming.
+        """
+        now = datetime.now(timezone.utc)
+        checks = [
+            ("cpu_percent", metrics.cpu_percent, config.alert_cpu_percent),
+            ("memory_percent", metrics.memory_percent, config.alert_memory_percent),
+            ("disk_percent", metrics.disk_percent, config.alert_disk_percent),
+        ]
+
+        for metric_name, current_value, threshold in checks:
+            if threshold <= 0:
+                continue
+            if current_value < threshold:
+                continue
+
+            # Respect cooldown per metric
+            cooldown_key = f"_metric_alert_{metric_name}"
+            last_alerted = getattr(self, cooldown_key, None)
+            if last_alerted and (now - last_alerted).total_seconds() < config.alert_cooldown:
+                continue
+
+            setattr(self, cooldown_key, now)
+            logger.warning(
+                "METRIC ALERT: %s at %.1f%% (threshold: %.1f%%)",
+                metric_name, current_value, threshold,
+            )
+
+            recipients = self._evaluator.get_recipients(AlertLevel.WARNING)
+            if recipients:
+                dispatch_alert(
+                    AlertLevel.WARNING,
+                    f"system/{metric_name}",
+                    current_value,
+                    recipients,
+                )

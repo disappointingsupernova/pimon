@@ -161,6 +161,11 @@ class Config:
         self.cooldown_pushover: int = _int(os.getenv("COOLDOWN_PUSHOVER"), 0)
         self.cooldown_mqtt: int = _int(os.getenv("COOLDOWN_MQTT"), 0)
 
+        # System metric alerts (0 = disabled, all disabled by default)
+        self.alert_cpu_percent: float = _float(os.getenv("ALERT_CPU_PERCENT"), 0.0)
+        self.alert_memory_percent: float = _float(os.getenv("ALERT_MEMORY_PERCENT"), 0.0)
+        self.alert_disk_percent: float = _float(os.getenv("ALERT_DISK_PERCENT"), 0.0)
+
         # Sensor aliases (friendly names for display)
         self.sensor_aliases: dict[str, str] = self._load_sensor_aliases()
 
