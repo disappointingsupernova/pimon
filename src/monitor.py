@@ -80,6 +80,11 @@ class Monitor:
                 config.log_level,
             )
 
+        # Publish MQTT online status for Home Assistant availability tracking
+        if config.mqtt_enabled:
+            from src.alerting.notifiers.mqtt import publish_online
+            publish_online()
+
         while self._running:
             self._poll()
             time.sleep(config.poll_interval)
@@ -162,6 +167,12 @@ class Monitor:
             if self._mqtt_publish:
                 for sensor_name, temp in successful:
                     self._mqtt_publish(sensor_name, temp)
+
+            # Publish system metrics to MQTT
+            if config.mqtt_enabled:
+                from src.alerting.notifiers.mqtt import publish_system_metrics
+                from src.sensors.system_metrics import collect_full_metrics
+                publish_system_metrics(collect_full_metrics())
 
         # Update cached data for dashboard API endpoints
         update_latest_readings([

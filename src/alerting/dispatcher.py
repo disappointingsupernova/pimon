@@ -102,3 +102,8 @@ def dispatch_recovery(
             message=f"Temperature: {temperature:.1f} C (was {previous_level.name})",
             level="WARNING",
         )
+
+    # MQTT
+    if config.mqtt_enabled:
+        from src.alerting.notifiers.mqtt import publish_recovery
+        publish_recovery(sensor_name, temperature, previous_level.name)
