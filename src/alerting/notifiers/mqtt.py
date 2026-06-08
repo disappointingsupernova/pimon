@@ -467,3 +467,93 @@ def publish_ha_discovery_for_readsb() -> None:
             device_class=device_class,
             icon=icon,
         )
+
+
+def publish_ha_discovery_for_collector(service_name: str, stats: dict) -> None:
+    """Auto-generate HA discovery for any collector based on its payload keys.
+
+    Iterates the stats dict and registers a sensor entity for each
+    numeric or boolean field. Skips 'timestamp' and string fields.
+    """
+    state_topic = _topic(f"service/{service_name}/state")
+
+    # Map of known field patterns to HA metadata
+    _FIELD_META = {
+        "battery_charge": ("%", "battery", "mdi:battery"),
+        "battery_runtime_sec": ("s", "duration", "mdi:timer"),
+        "input_voltage": ("V", "voltage", "mdi:flash"),
+        "output_voltage": ("V", "voltage", "mdi:flash"),
+        "load_percent": ("%", "power_factor", "mdi:gauge"),
+        "temperature_c": ("°C", "temperature", None),
+        "power_on_hours": ("h", "duration", "mdi:clock-outline"),
+        "offset_ms": ("ms", None, "mdi:clock-alert"),
+        "root_delay_ms": ("ms", None, "mdi:timer-sand"),
+        "stratum": ("", None, "mdi:layers"),
+        "satellites_visible": ("", None, "mdi:satellite-variant"),
+        "satellites_used": ("", None, "mdi:satellite-uplink"),
+        "hdop": ("", None, "mdi:crosshairs-gps"),
+        "altitude_m": ("m", None, "mdi:altimeter"),
+        "fix_type": ("", None, "mdi:crosshairs-gps"),
+        "dns_queries_today": ("", None, "mdi:dns"),
+        "ads_blocked_today": ("", None, "mdi:shield-check"),
+        "ads_percentage_today": ("%", None, "mdi:shield-half-full"),
+        "block_percentage": ("%", None, "mdi:shield-half-full"),
+        "blocked_today": ("", None, "mdi:shield-check"),
+        "active_connections": ("", None, "mdi:server-network"),
+        "requests": ("", None, "mdi:web"),
+        "peers_total": ("", None, "mdi:account-group"),
+        "peers_online": ("", None, "mdi:account-check"),
+        "peers_active": ("", None, "mdi:account-check"),
+        "containers_running": ("", None, "mdi:docker"),
+        "containers_total": ("", None, "mdi:docker"),
+        "images": ("", None, "mdi:layers"),
+        "active_sessions": ("", None, "mdi:play-circle"),
+        "devices_total": ("", None, "mdi:zigbee"),
+        "cache_hit_ratio": ("%", None, "mdi:cached"),
+        "total_queries": ("", None, "mdi:dns"),
+        "services_running": ("", None, "mdi:check-circle"),
+        "services_failed": ("", None, "mdi:alert-circle"),
+        "aircraft_total": ("", None, "mdi:airplane"),
+        "aircraft_with_position": ("", None, "mdi:map-marker"),
+        "messages_rate": ("msg/s", None, "mdi:message-fast"),
+        "signal_mean_dbfs": ("dBFS", "signal_strength", "mdi:signal"),
+    }
+
+    for key, value in stats.items():
+        # Skip non-metric fields
+        if key in ("timestamp", "hostname", "status", "source", "reference",
+                   "tailnet_name", "server_name", "version", "device",
+                   "feed_connection_type", "build_version", "feed_alias",
+                   "message", "services", "coordinator_type"):
+            continue
+
+        # Only register numeric and boolean values
+        if not isinstance(value, (int, float, bool)):
+            continue
+
+        sensor_id = f"svc_{service_name}_{key}"
+        nice_name = key.replace("_", " ").title()
+
+        unit, device_class, icon = _FIELD_META.get(key, ("", None, None))
+
+        if isinstance(value, bool):
+            _send_ha_discovery(
+                sensor_id=sensor_id,
+                name=f"{service_name.title()} {nice_name}",
+                unit="",
+                state_topic=state_topic,
+                value_template="{{ value_json." + key + " }}",
+                device_class="problem" if "fail" in key or "throttl" in key else None,
+                icon=icon or "mdi:toggle-switch",
+                component="binary_sensor",
+            )
+        else:
+            _send_ha_discovery(
+                sensor_id=sensor_id,
+                name=f"{service_name.title()} {nice_name}",
+                unit=unit,
+                state_topic=state_topic,
+                value_template="{{ value_json." + key + " }}",
+                device_class=device_class,
+                icon=icon or "mdi:information-outline",
+            )

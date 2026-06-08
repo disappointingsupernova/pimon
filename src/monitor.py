@@ -358,6 +358,11 @@ class Monitor:
                         logger.info("Auto-detected %s service, publishing stats", service_name)
                         setattr(self, detection_key, True)
 
+                    # Send HA auto-discovery for all fields in this collector
+                    from src.alerting.notifiers.mqtt import publish_ha_discovery_for_collector
+                    service_name = topic_suffix.split("/")[1]
+                    publish_ha_discovery_for_collector(service_name, stats)
+
                     stats["timestamp"] = _now_iso()
                     topic = _topic(topic_suffix)
                     client.publish(topic, json.dumps(stats), qos=1, retain=True)
