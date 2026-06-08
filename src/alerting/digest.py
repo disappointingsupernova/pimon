@@ -1,4 +1,4 @@
-"""Daily digest email for Pi Temperature Alerter.
+"""Daily digest email for PiMon.
 
 Sends a once-daily summary with min/max/average temperatures,
 alert count, and uptime statistics.
@@ -12,7 +12,7 @@ from pathlib import Path
 from src.alerting.email_sender import _send
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
@@ -64,7 +64,7 @@ def send_daily_digest() -> bool:
     lines.append(f"  Sensors active: {len(readings_by_sensor)}")
 
     body = "\n".join(lines)
-    subject = f"[Pi Alerter] Daily Digest - {yesterday.isoformat()}"
+    subject = f"[PiMon] Daily Digest - {yesterday.isoformat()}"
 
     recipients = list(set(
         config.recipients_warning

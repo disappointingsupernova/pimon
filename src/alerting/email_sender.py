@@ -1,4 +1,4 @@
-"""Email alert sender for Pi Temperature Alerter.
+"""Email alert sender for PiMon.
 
 Handles SMTP connection, TLS, and message formatting.
 Sends multipart emails with both plain text and HTML parts.
@@ -14,7 +14,7 @@ from html import escape as html_escape
 from src.alerting.thresholds import AlertLevel
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _LEVEL_SUBJECTS = {
     AlertLevel.WARNING: "WARNING: Temperature elevated",
@@ -104,7 +104,7 @@ def send_alert_email(
     temperature: float,
 ) -> bool:
     """Send a temperature alert email. Returns True on success."""
-    subject = f"[Pi Alerter] {_LEVEL_SUBJECTS.get(level, 'Alert')} - {sensor_name}"
+    subject = f"[PiMon] {_LEVEL_SUBJECTS.get(level, 'Alert')} - {sensor_name}"
     plain = (
         f"Temperature alert triggered on sensor: {sensor_name}\n"
         f"\n"
@@ -126,7 +126,7 @@ def send_recovery_email(
     previous_level: AlertLevel,
 ) -> bool:
     """Send a recovery notification email. Returns True on success."""
-    subject = f"[Pi Alerter] RECOVERED: {sensor_name} back to normal"
+    subject = f"[PiMon] RECOVERED: {sensor_name} back to normal"
     plain = (
         f"Temperature has returned to normal on sensor: {sensor_name}\n"
         f"\n"
@@ -155,9 +155,9 @@ def send_test_email() -> bool:
         logger.error("No recipients configured - cannot send test email")
         return False
 
-    subject = "[Pi Alerter] Test Email - Configuration Verified"
+    subject = "[PiMon] Test Email - Configuration Verified"
     plain = (
-        "This is a test email from Pi Temperature Alerter.\n"
+        "This is a test email from PiMon.\n"
         "\n"
         "Your SMTP configuration is working correctly.\n"
         f"\n"

@@ -1,4 +1,4 @@
-# Pi Temperature Alerter
+# PiMon
 
 A comprehensive Raspberry Pi temperature monitoring and alerting system. Monitors CPU, GPU, and external DS18B20 sensors with configurable email alerts, hysteresis-based threshold evaluation, and a real-time web dashboard.
 
@@ -101,7 +101,7 @@ stateDiagram-v2
 
 ## Production Installation
 
-The application installs to `/opt/pi-temp-alerter` with a dedicated system user, systemd service, and hardened file permissions.
+The application installs to `/opt/pimon` with a dedicated system user, systemd service, and hardened file permissions.
 
 ### Prerequisites
 
@@ -123,8 +123,8 @@ sudo ./install.sh
 
 The installer will:
 
-1. Create a dedicated `pi-temp-alerter` system user (no login shell)
-2. Copy application files to `/opt/pi-temp-alerter`
+1. Create a dedicated `pimon` system user (no login shell)
+2. Copy application files to `/opt/pimon`
 3. Create a Python virtual environment and install dependencies
 4. Set restrictive file permissions (`.env` is chmod 600)
 5. Install and enable the systemd service
@@ -134,16 +134,16 @@ The installer will:
 
 ```bash
 # Edit configuration
-sudo nano /opt/pi-temp-alerter/.env
+sudo nano /opt/pimon/.env
 
 # Test email delivery
-sudo -u pi-temp-alerter /opt/pi-temp-alerter/venv/bin/python /opt/pi-temp-alerter/main.py test-email
+sudo -u pimon /opt/pimon/venv/bin/python /opt/pimon/main.py test-email
 
 # Start the service
-sudo systemctl start pi-temp-alerter
+sudo systemctl start pimon
 
 # Check status
-sudo systemctl status pi-temp-alerter
+sudo systemctl status pimon
 ```
 
 ### Uninstall
@@ -163,7 +163,7 @@ The uninstaller will:
 ### Updating
 
 ```bash
-sudo /opt/pi-temp-alerter/venv/bin/python /opt/pi-temp-alerter/main.py update
+sudo /opt/pimon/venv/bin/python /opt/pimon/main.py update
 ```
 
 Or from the cloned repository:
@@ -318,13 +318,13 @@ TEMP_WARNING_DS18B20_28_0000XXXX=25
 | Field            | Type   | Default                          | Description                          |
 |------------------|--------|----------------------------------|--------------------------------------|
 | DATABASE_ENABLED | bool   | true                             | Enable database persistence          |
-| DATABASE_URL     | string | sqlite:///data/pi_temp_alerter.db| SQLAlchemy connection URL            |
+| DATABASE_URL     | string | sqlite:///data/pimon.db| SQLAlchemy connection URL            |
 
 Supported database backends:
 
 | Backend    | URL Format                                          | Driver Package    |
 |------------|-----------------------------------------------------|-------------------|
-| SQLite     | `sqlite:///data/pi_temp_alerter.db`                 | (built-in)        |
+| SQLite     | `sqlite:///data/pimon.db`                 | (built-in)        |
 | MySQL      | `mysql+pymysql://user:pass@host:3306/dbname`        | `pip install pymysql` |
 | PostgreSQL | `postgresql+psycopg2://user:pass@host:5432/dbname`  | `pip install psycopg2-binary` |
 
@@ -345,8 +345,8 @@ Supported database backends:
 | MQTT_PORT           | int    | 1883               | MQTT broker port                     |
 | MQTT_USERNAME       | string | -                  | MQTT authentication username         |
 | MQTT_PASSWORD       | string | -                  | MQTT authentication password         |
-| MQTT_CLIENT_ID      | string | pi-temp-alerter    | MQTT client identifier               |
-| MQTT_TOPIC_PREFIX   | string | pi-temp-alerter    | MQTT topic prefix                    |
+| MQTT_CLIENT_ID      | string | pimon    | MQTT client identifier               |
+| MQTT_TOPIC_PREFIX   | string | pimon    | MQTT topic prefix                    |
 
 ### Fan Control
 
@@ -459,7 +459,7 @@ This application **pushes** data outbound to an MQTT broker. It does not require
 
 ```mermaid
 graph LR
-    A[Pi Temperature Alerter] -->|TCP 1883 outbound| B[MQTT Broker]
+    A[PiMon] -->|TCP 1883 outbound| B[MQTT Broker]
     B --> C[Home Assistant]
     B --> D[Grafana]
     B --> E[Node-RED]
@@ -495,14 +495,14 @@ MQTT_HOST=192.168.1.100      # Your HAOS IP address
 MQTT_PORT=1883
 MQTT_USERNAME=mqtt_user       # The user you created in HAOS
 MQTT_PASSWORD=mqtt_password
-MQTT_CLIENT_ID=pi-temp-alerter
-MQTT_TOPIC_PREFIX=pi-temp-alerter
+MQTT_CLIENT_ID=pimon
+MQTT_TOPIC_PREFIX=pimon
 ```
 
 Restart the service:
 
 ```bash
-sudo systemctl restart pi-temp-alerter
+sudo systemctl restart pimon
 ```
 
 ### Verifying the Connection
@@ -510,11 +510,11 @@ sudo systemctl restart pi-temp-alerter
 Check the logs for a successful connection:
 
 ```bash
-pi-temp-alerter logs | grep MQTT
+pimon logs | grep MQTT
 # Should show: MQTT connected to 192.168.1.100:1883 (hostname: mypi, LWT enabled)
 ```
 
-In Home Assistant, go to **Settings > Devices & Services > MQTT**. You should see a new device called "Pi Temp Alerter (hostname)" with all sensors auto-discovered.
+In Home Assistant, go to **Settings > Devices & Services > MQTT**. You should see a new device called "PiMon (hostname)" with all sensors auto-discovered.
 
 ### Topic Structure
 
@@ -522,12 +522,12 @@ All topics include the Pi's hostname for multi-device support:
 
 | Topic | Content | Retained |
 |-------|---------|----------|
-| `pi-temp-alerter/<hostname>/sensor/<name>/state` | Temperature per sensor | Yes |
-| `pi-temp-alerter/<hostname>/system/state` | Full system metrics (CPU, memory, disk, swap, load, network, processes, uptime) | Yes |
-| `pi-temp-alerter/<hostname>/alerts` | Alert events with level and temperature | No |
-| `pi-temp-alerter/<hostname>/recovery` | Recovery events | No |
-| `pi-temp-alerter/<hostname>/status` | "online" / "offline" (LWT) | Yes |
-| `pi-temp-alerter/<hostname>/command` | Inbound commands (subscribed) | - |
+| `pimon/<hostname>/sensor/<name>/state` | Temperature per sensor | Yes |
+| `pimon/<hostname>/system/state` | Full system metrics (CPU, memory, disk, swap, load, network, processes, uptime) | Yes |
+| `pimon/<hostname>/alerts` | Alert events with level and temperature | No |
+| `pimon/<hostname>/recovery` | Recovery events | No |
+| `pimon/<hostname>/status` | "online" / "offline" (LWT) | Yes |
+| `pimon/<hostname>/command` | Inbound commands (subscribed) | - |
 
 ### Last Will and Testament (LWT)
 
@@ -535,7 +535,7 @@ If the Pi loses power or the process crashes, the MQTT broker automatically publ
 
 ### Remote Commands
 
-Publish JSON to `pi-temp-alerter/<hostname>/command` to remotely control the Pi:
+Publish JSON to `pimon/<hostname>/command` to remotely control the Pi:
 
 ```json
 {"action": "test_alert"}              // Trigger a test alert
@@ -556,7 +556,7 @@ automation:
   - alias: "Pi Temperature Emergency"
     trigger:
       - platform: mqtt
-        topic: "pi-temp-alerter/+/alerts"
+        topic: "pimon/+/alerts"
     condition:
       - "{{ trigger.payload_json.level == 'EMERGENCY' }}"
     action:
@@ -578,7 +578,7 @@ automation:
   - alias: "Pi Temperature Warning"
     trigger:
       - platform: mqtt
-        topic: "pi-temp-alerter/+/alerts"
+        topic: "pimon/+/alerts"
     action:
       - service: notify.persistent_notification
         data:
@@ -591,12 +591,12 @@ automation:
 Multiple Pis can publish to the same broker. Each uses its own hostname in the topic path:
 
 ```
-pi-temp-alerter/pi-living-room/sensor/cpu/state
-pi-temp-alerter/pi-garage/sensor/cpu/state
-pi-temp-alerter/pi-server/sensor/cpu/state
+pimon/pi-living-room/sensor/cpu/state
+pimon/pi-garage/sensor/cpu/state
+pimon/pi-server/sensor/cpu/state
 ```
 
-To aggregate in Grafana or Node-RED, subscribe to `pi-temp-alerter/+/system/state` (the `+` is a single-level wildcard). Each payload includes a `hostname` field for filtering.
+To aggregate in Grafana or Node-RED, subscribe to `pimon/+/system/state` (the `+` is a single-level wildcard). Each payload includes a `hostname` field for filtering.
 
 In Home Assistant, each Pi appears as a separate device with its own entities.
 
@@ -606,16 +606,16 @@ With the [Grafana MQTT datasource plugin](https://grafana.com/grafana/plugins/gr
 
 1. Install the MQTT datasource plugin in Grafana
 2. Add a new MQTT datasource pointing to your broker
-3. Subscribe to `pi-temp-alerter/+/system/state`
+3. Subscribe to `pimon/+/system/state`
 4. The flat JSON payload maps directly to Grafana fields without transformation
 
 ### Node-RED Integration
 
 Subscribe to topics with MQTT-in nodes:
 
-- `pi-temp-alerter/+/alerts` - Process all alerts from all Pis
-- `pi-temp-alerter/+/system/state` - Monitor system health across all Pis
-- `pi-temp-alerter/specific-hostname/sensor/cpu/state` - Track a specific sensor
+- `pimon/+/alerts` - Process all alerts from all Pis
+- `pimon/+/system/state` - Monitor system health across all Pis
+- `pimon/specific-hostname/sensor/cpu/state` - Track a specific sensor
 
 Use the `hostname` field in payloads to route, filter, or aggregate data.
 
@@ -647,7 +647,7 @@ On your ADS-B Pi, you do not need to configure anything. If fr24feed and readsb 
 
 Collects from fr24feed's local HTTP monitor endpoint (`http://127.0.0.1:8754/monitor.json`), falling back to the `fr24feed-status` CLI command.
 
-MQTT topic: `pi-temp-alerter/<hostname>/service/fr24feed/state`
+MQTT topic: `pimon/<hostname>/service/fr24feed/state`
 
 Payload:
 ```json
@@ -672,7 +672,7 @@ Home Assistant entities auto-discovered:
 
 Reads JSON statistics from readsb's run directory (`/run/readsb/stats.json` and `/run/readsb/aircraft.json`).
 
-MQTT topic: `pi-temp-alerter/<hostname>/service/readsb/state`
+MQTT topic: `pimon/<hostname>/service/readsb/state`
 
 Payload:
 ```json
@@ -749,7 +749,7 @@ Every collector auto-detects its service. No configuration is needed unless note
 
 Auto-detects chrony (preferred) or ntpd and publishes time synchronisation health.
 
-MQTT topic: `pi-temp-alerter/<hostname>/service/ntp/state`
+MQTT topic: `pimon/<hostname>/service/ntp/state`
 
 Payload:
 ```json
@@ -768,7 +768,7 @@ Payload:
 
 Auto-detects gpsd by connecting to its default TCP port (2947). Useful for ADS-B feeders that use GPS for MLAT synchronisation.
 
-MQTT topic: `pi-temp-alerter/<hostname>/service/gps/state`
+MQTT topic: `pimon/<hostname>/service/gps/state`
 
 Payload:
 ```json
@@ -798,7 +798,7 @@ Pi-Temperature-Alerter/
 |-- CONTRIBUTING.md          # Contribution guidelines
 |-- LICENCE                  # MIT licence
 |-- systemd/
-|   `-- pi-temp-alerter.service  # Systemd unit file
+|   `-- pimon.service  # Systemd unit file
 `-- src/
     |-- config.py            # Configuration loader and validation
     |-- logger.py            # Logging and CSV setup with daily rotation

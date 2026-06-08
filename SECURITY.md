@@ -11,7 +11,7 @@ Only the latest version on the `main` branch receives security updates. Please e
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in Pi Temperature Alerter, please report it responsibly:
+If you discover a security vulnerability in PiMon, please report it responsibly:
 
 1. **Do not** open a public GitHub issue for security vulnerabilities.
 2. Email the maintainer directly at the address listed in the repository's profile.
@@ -45,7 +45,7 @@ The systemd service file includes several security features:
 - `ProtectSystem=strict` - Read-only filesystem except allowed paths
 - `ProtectHome=true` - No access to home directories
 - `PrivateTmp=true` - Isolated temporary directory
-- Runs as a dedicated `pi-temp-alerter` system user with no login shell
+- Runs as a dedicated `pimon` system user with no login shell
 
 ### Database Security
 

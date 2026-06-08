@@ -16,7 +16,7 @@ import json
 import logging
 import socket
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _GPSD_HOST = "127.0.0.1"
 _GPSD_PORT = 2947

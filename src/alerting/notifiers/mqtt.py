@@ -1,4 +1,4 @@
-"""MQTT publisher for Pi Temperature Alerter.
+"""MQTT publisher for PiMon.
 
 Publishes temperature readings, system metrics, alerts, and recovery
 events to an MQTT broker. Supports:
@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _client = None
 _discovery_sent: set[str] = set()
@@ -153,7 +153,7 @@ def _device_info() -> dict:
     """Return device metadata for Home Assistant discovery."""
     return {
         "identifiers": [config.mqtt_client_id],
-        "name": f"Pi Temp Alerter ({_hostname})",
+        "name": f"PiMon ({_hostname})",
         "manufacturer": "Raspberry Pi",
         "model": platform.machine(),
         "sw_version": "1.0.0",

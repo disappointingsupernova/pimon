@@ -1,14 +1,14 @@
 [Unit]
-Description=Pi Temperature Alerter - System health monitoring
+Description=PiMon - System health monitoring
 After=network.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi-temp-alerter
-Group=pi-temp-alerter
-WorkingDirectory=/opt/pi-temp-alerter
-ExecStart=/opt/pi-temp-alerter/venv/bin/python main.py start
+User=pimon
+Group=pimon
+WorkingDirectory=/opt/pimon
+ExecStart=/opt/pimon/venv/bin/python main.py start
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
@@ -19,7 +19,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/opt/pi-temp-alerter/logs /opt/pi-temp-alerter/data
+ReadWritePaths=/opt/pimon/logs /opt/pimon/data
 
 [Install]
 WantedBy=multi-user.target

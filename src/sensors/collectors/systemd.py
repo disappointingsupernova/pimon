@@ -13,7 +13,7 @@ import logging
 import os
 import subprocess
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 def collect_systemd_stats() -> dict | None:

@@ -16,7 +16,7 @@ from src.database.models import (
     get_session,
 )
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 # ============================================================================

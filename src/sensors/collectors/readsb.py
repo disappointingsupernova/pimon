@@ -19,7 +19,7 @@ from pathlib import Path
 
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 # Default paths where readsb writes its stats JSON files
 _STATS_FILE = Path("/run/readsb/stats.json")

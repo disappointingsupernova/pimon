@@ -12,7 +12,7 @@ import urllib.error
 
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 def send_webhook(payload: dict) -> bool:

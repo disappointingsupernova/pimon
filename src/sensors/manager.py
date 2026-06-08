@@ -8,7 +8,7 @@ from src.sensors.cpu import CpuSensor
 from src.sensors.ds18b20 import discover_ds18b20_sensors
 from src.sensors.gpu import GpuSensor
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 class SensorManager:

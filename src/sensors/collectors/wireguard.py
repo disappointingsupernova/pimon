@@ -12,7 +12,7 @@ import logging
 import subprocess
 import time
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 def collect_wireguard_stats() -> dict | None:

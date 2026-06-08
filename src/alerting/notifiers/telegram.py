@@ -10,7 +10,7 @@ import urllib.error
 
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _API_BASE = "https://api.telegram.org/bot{token}/sendMessage"
 

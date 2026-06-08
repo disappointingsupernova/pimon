@@ -1,4 +1,4 @@
-"""Configuration loader for Pi Temperature Alerter.
+"""Configuration loader for PiMon.
 
 Reads all settings from the .env file and exposes them as typed attributes.
 Supports reloading by creating a new Config instance.
@@ -99,7 +99,7 @@ class Config:
         self.endpoint_metrics_enabled: bool = _bool(os.getenv("ENDPOINT_METRICS_ENABLED", "true"))
 
         # Database
-        _default_db = "sqlite:///" + str(Path(__file__).resolve().parent.parent / "data" / "pi_temp_alerter.db")
+        _default_db = "sqlite:///" + str(Path(__file__).resolve().parent.parent / "data" / "pimon.db")
         self.database_url: str = os.getenv("DATABASE_URL", _default_db)
         self.database_enabled: bool = _bool(os.getenv("DATABASE_ENABLED", "true"))
 
@@ -119,8 +119,8 @@ class Config:
         self.mqtt_tls: bool = _bool(os.getenv("MQTT_TLS", "false"))
         self.mqtt_username: str = os.getenv("MQTT_USERNAME", "")
         self.mqtt_password: str = os.getenv("MQTT_PASSWORD", "")
-        self.mqtt_client_id: str = os.getenv("MQTT_CLIENT_ID", "pi-temp-alerter")
-        self.mqtt_topic_prefix: str = os.getenv("MQTT_TOPIC_PREFIX", "pi-temp-alerter")
+        self.mqtt_client_id: str = os.getenv("MQTT_CLIENT_ID", "pimon")
+        self.mqtt_topic_prefix: str = os.getenv("MQTT_TOPIC_PREFIX", "pimon")
 
         # Advanced
         self.dry_run: bool = _bool(os.getenv("DRY_RUN", "false"))

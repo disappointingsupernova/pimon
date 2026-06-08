@@ -20,7 +20,7 @@ import urllib.error
 
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 # fr24feed exposes stats on a local HTTP endpoint
 _FR24_STATUS_URL = "http://127.0.0.1:8754/monitor.json"

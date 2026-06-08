@@ -1,1 +1,1 @@
-"""Web dashboard for Pi Temperature Alerter."""
+"""Web dashboard for PiMon."""

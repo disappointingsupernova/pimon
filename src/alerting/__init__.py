@@ -1,1 +1,1 @@
-"""Alerting modules for Pi Temperature Alerter."""
+"""Alerting modules for PiMon."""

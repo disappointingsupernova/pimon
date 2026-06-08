@@ -23,7 +23,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 # ============================================================================

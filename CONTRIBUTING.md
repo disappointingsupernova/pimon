@@ -1,4 +1,4 @@
-# Contributing to Pi Temperature Alerter
+# Contributing to PiMon
 
 Contributions are welcome. Please follow these guidelines to keep the project consistent and maintainable.
 

@@ -13,7 +13,7 @@ import logging
 import subprocess
 import json
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _DEVICES = ["/dev/sda", "/dev/nvme0", "/dev/mmcblk0"]
 

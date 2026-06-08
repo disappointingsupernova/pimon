@@ -1,1 +1,1 @@
-"""Notification backends for Pi Temperature Alerter."""
+"""Notification backends for PiMon."""

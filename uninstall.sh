@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# uninstall.sh - Remove Pi Temperature Alerter from the system
+# uninstall.sh - Remove PiMon from the system
 # Must be run as root (sudo ./uninstall.sh)
 
 set -euo pipefail
 
-APP_NAME="pi-temp-alerter"
+APP_NAME="pimon"
 INSTALL_DIR="/opt/${APP_NAME}"
 SERVICE_USER="${APP_NAME}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
@@ -22,7 +22,7 @@ if [[ $EUID -ne 0 ]]; then
     error "This script must be run as root. Use: sudo ./uninstall.sh"
 fi
 
-echo "This will remove Pi Temperature Alerter from the system."
+echo "This will remove PiMon from the system."
 echo "  Install directory: ${INSTALL_DIR}"
 echo "  Service:           ${APP_NAME}.service"
 echo "  User:              ${SERVICE_USER}"

@@ -1,4 +1,4 @@
-"""Notification dispatcher for Pi Temperature Alerter.
+"""Notification dispatcher for PiMon.
 
 Sends alerts and recovery notifications via all enabled channels:
 email, webhook, Telegram, and Pushover.
@@ -9,7 +9,7 @@ import logging
 from src.alerting.thresholds import AlertLevel
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 def dispatch_alert(

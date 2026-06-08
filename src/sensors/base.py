@@ -1,4 +1,4 @@
-"""Base sensor interface for Pi Temperature Alerter."""
+"""Base sensor interface for PiMon."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass

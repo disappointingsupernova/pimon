@@ -10,7 +10,7 @@ import urllib.parse
 
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _API_URL = "https://api.pushover.net/1/messages.json"
 

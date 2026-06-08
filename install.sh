@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh - Install Pi Temperature Alerter to /opt/pi-temp-alerter
+# install.sh - Install PiMon to /opt/pimon
 # Must be run as root (sudo ./install.sh)
 #
 # This script is idempotent - safe to run multiple times. It will:
@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-APP_NAME="pi-temp-alerter"
+APP_NAME="pimon"
 INSTALL_DIR="/opt/${APP_NAME}"
 SERVICE_USER="${APP_NAME}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
@@ -155,7 +155,7 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/venv"
 info "Installing systemd service"
 cat > "${SERVICE_FILE}" <<EOF
 [Unit]
-Description=Pi Temperature Alerter - System health monitoring
+Description=PiMon - System health monitoring
 After=network.target
 Wants=network-online.target
 

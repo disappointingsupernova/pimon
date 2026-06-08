@@ -13,7 +13,7 @@ Metrics collected:
 import logging
 import subprocess
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 def collect_ntp_stats() -> dict | None:

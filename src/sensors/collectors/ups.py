@@ -14,7 +14,7 @@ import logging
 import subprocess
 import os
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 def collect_ups_stats() -> dict | None:

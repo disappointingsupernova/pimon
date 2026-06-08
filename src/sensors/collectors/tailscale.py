@@ -12,7 +12,7 @@ import json
 import logging
 import subprocess
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 def collect_tailscale_stats() -> dict | None:

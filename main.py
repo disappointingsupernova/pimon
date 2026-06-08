@@ -1,4 +1,4 @@
-"""CLI entry point for Pi Temperature Alerter.
+"""CLI entry point for PiMon.
 
 Provides commands for starting the monitoring daemon, checking sensor
 status, viewing history, testing email configuration, displaying
@@ -12,11 +12,11 @@ from pathlib import Path
 
 from src.config import config
 
-_INSTALL_DIR = Path("/opt/pi-temp-alerter")
+_INSTALL_DIR = Path("/opt/pimon")
 _APP_DIR = Path(__file__).resolve().parent
 
 _PROG_DESCRIPTION = """\
-Pi Temperature Alerter - Raspberry Pi system health monitoring and alerting.
+PiMon - Raspberry Pi system health monitoring and alerting.
 
 Monitors CPU, GPU, and DS18B20 temperature sensors with configurable
 multi-channel alerting (email, webhook, Telegram, Pushover, MQTT),
@@ -137,7 +137,7 @@ def _cmd_logs(args: argparse.Namespace) -> None:
             lines = f.readlines()
     except PermissionError:
         print(f"Permission denied reading {log_file}")
-        print("Try: sudo pi-temp-alerter logs")
+        print("Try: sudo pimon logs")
         sys.exit(1)
 
     count = args.lines
@@ -232,12 +232,12 @@ def _cmd_update(_args: argparse.Namespace) -> None:
 
     # Restart service if active
     svc_check = subprocess.run(
-        ["systemctl", "is-active", "--quiet", "pi-temp-alerter"],
+        ["systemctl", "is-active", "--quiet", "pimon"],
         capture_output=True,
     )
     if svc_check.returncode == 0:
-        print("Restarting pi-temp-alerter service...")
-        subprocess.run(["systemctl", "restart", "pi-temp-alerter"], check=True)
+        print("Restarting pimon service...")
+        subprocess.run(["systemctl", "restart", "pimon"], check=True)
         print("Service restarted.")
     else:
         print("Service not running - skipping restart.")
@@ -251,7 +251,7 @@ def _cmd_update(_args: argparse.Namespace) -> None:
 
 def _cmd_config(_args: argparse.Namespace) -> None:
     """Display the current configuration with secrets redacted."""
-    print("Pi Temperature Alerter - Current Configuration")
+    print("PiMon - Current Configuration")
     print("=" * 60)
     print()
     print("SMTP")
@@ -382,17 +382,17 @@ def _check_service_enabled() -> None:
     """Warn if the systemd service is not enabled for auto-start."""
     import logging
 
-    logger = logging.getLogger("pi_temp_alerter")
+    logger = logging.getLogger("pimon")
 
     try:
         result = subprocess.run(
-            ["systemctl", "is-enabled", "--quiet", "pi-temp-alerter"],
+            ["systemctl", "is-enabled", "--quiet", "pimon"],
             capture_output=True,
         )
         if result.returncode != 0:
             msg = (
-                "The pi-temp-alerter systemd service is not enabled for auto-start. "
-                "Run 'sudo systemctl enable pi-temp-alerter' to start on boot."
+                "The pimon systemd service is not enabled for auto-start. "
+                "Run 'sudo systemctl enable pimon' to start on boot."
             )
             logger.warning(msg)
             print(f"WARNING: {msg}")
@@ -405,8 +405,8 @@ def _check_service_enabled() -> None:
                     + config.recipients_critical
                     + config.recipients_emergency
                 )),
-                "[Pi Alerter] Service not enabled for auto-start",
-                "The pi-temp-alerter service is not enabled for automatic startup.\n"
+                "[PiMon] Service not enabled for auto-start",
+                "The pimon service is not enabled for automatic startup.\n"
                 "\n"
                 "If the device reboots, monitoring will not resume automatically.\n"
                 "Please enable the service for auto-start on the device.\n",
@@ -423,7 +423,7 @@ def _check_service_enabled() -> None:
 def main() -> None:
     """Parse arguments and dispatch to the appropriate command."""
     parser = argparse.ArgumentParser(
-        prog="pi-temp-alerter",
+        prog="pimon",
         description=_PROG_DESCRIPTION,
         epilog=_PROG_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -549,7 +549,7 @@ def main() -> None:
             "Requires root privileges (use sudo). Uses git pull --ff-only\n"
             "to ensure a clean fast-forward merge without conflicts.\n"
             "\n"
-            "If running from /opt/pi-temp-alerter, updates that directory.\n"
+            "If running from /opt/pimon, updates that directory.\n"
             "Otherwise updates the current working directory."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

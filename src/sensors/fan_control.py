@@ -8,7 +8,7 @@ import logging
 
 from src.config import config
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _fan_state: bool = False
 _gpio_initialised: bool = False

@@ -1,4 +1,4 @@
-"""Database migration tool for Pi Temperature Alerter.
+"""Database migration tool for PiMon.
 
 Copies all records from one database backend to another, enabling
 migration between SQLite, MySQL, and PostgreSQL without data loss.
@@ -16,7 +16,7 @@ from src.database.models import (
     TemperatureReading,
 )
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 # Batch size for bulk inserts to manage memory on large datasets
 _BATCH_SIZE = 1000

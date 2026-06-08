@@ -1,4 +1,4 @@
-"""Logging configuration for Pi Temperature Alerter.
+"""Logging configuration for PiMon.
 
 Sets up rotating file handler and console output. Implements daily CSV
 rotation with configurable retention for temperature history.
@@ -20,7 +20,7 @@ def setup_logging() -> logging.Logger:
     """Initialise and return the application logger."""
     _LOG_DIR.mkdir(exist_ok=True)
 
-    logger = logging.getLogger("pi_temp_alerter")
+    logger = logging.getLogger("pimon")
     logger.setLevel(getattr(logging, config.log_level.upper(), logging.INFO))
 
     # Prevent duplicate handlers on repeated calls

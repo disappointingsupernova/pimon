@@ -1,4 +1,4 @@
-"""Core monitoring loop for Pi Temperature Alerter.
+"""Core monitoring loop for PiMon.
 
 Periodically reads all sensors, evaluates thresholds, and dispatches
 alerts with cooldown and hysteresis support.
@@ -17,7 +17,7 @@ from src.logger import log_temperatures_csv_batch, prune_old_csv_files
 from src.sensors.base import SensorReading
 from src.sensors.manager import SensorManager
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 
 class Monitor:

@@ -15,7 +15,7 @@ from flask import Flask, jsonify, render_template, request, Response
 from src.config import config
 from src.sensors.manager import SensorManager
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -52,7 +52,7 @@ def _check_auth() -> Response | None:
         return Response(
             "Authentication required.",
             401,
-            {"WWW-Authenticate": 'Basic realm="Pi Temperature Alerter"'},
+            {"WWW-Authenticate": 'Basic realm="PiMon"'},
         )
 
     # Constant-time comparison prevents timing-based credential guessing
@@ -63,7 +63,7 @@ def _check_auth() -> Response | None:
         return Response(
             "Authentication required.",
             401,
-            {"WWW-Authenticate": 'Basic realm="Pi Temperature Alerter"'},
+            {"WWW-Authenticate": 'Basic realm="PiMon"'},
         )
     return None
 
@@ -233,38 +233,38 @@ def prometheus_metrics():
     from src.sensors.system_metrics import collect_metrics
 
     lines = []
-    lines.append("# HELP pi_temp_alerter_uptime_seconds Uptime in seconds")
-    lines.append("# TYPE pi_temp_alerter_uptime_seconds gauge")
+    lines.append("# HELP pimon_uptime_seconds Uptime in seconds")
+    lines.append("# TYPE pimon_uptime_seconds gauge")
     uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
-    lines.append(f"pi_temp_alerter_uptime_seconds {uptime:.1f}")
+    lines.append(f"pimon_uptime_seconds {uptime:.1f}")
 
     if _latest_sensor_data:
-        lines.append("# HELP pi_temp_alerter_temperature_celsius Current temperature")
-        lines.append("# TYPE pi_temp_alerter_temperature_celsius gauge")
+        lines.append("# HELP pimon_temperature_celsius Current temperature")
+        lines.append("# TYPE pimon_temperature_celsius gauge")
         for sensor_data in _latest_sensor_data:
             if sensor_data.get("available", False):
                 safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', sensor_data["sensor"])
                 lines.append(
-                    f'pi_temp_alerter_temperature_celsius{{sensor="{safe_name}"}} '
+                    f'pimon_temperature_celsius{{sensor="{safe_name}"}} '
                     f"{sensor_data['temperature_c']:.1f}"
                 )
 
     metrics = collect_metrics()
-    lines.append("# HELP pi_temp_alerter_cpu_usage_percent CPU usage percentage")
-    lines.append("# TYPE pi_temp_alerter_cpu_usage_percent gauge")
-    lines.append(f"pi_temp_alerter_cpu_usage_percent {metrics.cpu_percent}")
+    lines.append("# HELP pimon_cpu_usage_percent CPU usage percentage")
+    lines.append("# TYPE pimon_cpu_usage_percent gauge")
+    lines.append(f"pimon_cpu_usage_percent {metrics.cpu_percent}")
 
-    lines.append("# HELP pi_temp_alerter_memory_usage_percent Memory usage percentage")
-    lines.append("# TYPE pi_temp_alerter_memory_usage_percent gauge")
-    lines.append(f"pi_temp_alerter_memory_usage_percent {metrics.memory_percent}")
+    lines.append("# HELP pimon_memory_usage_percent Memory usage percentage")
+    lines.append("# TYPE pimon_memory_usage_percent gauge")
+    lines.append(f"pimon_memory_usage_percent {metrics.memory_percent}")
 
-    lines.append("# HELP pi_temp_alerter_disk_usage_percent Disk usage percentage")
-    lines.append("# TYPE pi_temp_alerter_disk_usage_percent gauge")
-    lines.append(f"pi_temp_alerter_disk_usage_percent {metrics.disk_percent}")
+    lines.append("# HELP pimon_disk_usage_percent Disk usage percentage")
+    lines.append("# TYPE pimon_disk_usage_percent gauge")
+    lines.append(f"pimon_disk_usage_percent {metrics.disk_percent}")
 
-    lines.append("# HELP pi_temp_alerter_throttled Whether the Pi is throttled")
-    lines.append("# TYPE pi_temp_alerter_throttled gauge")
-    lines.append(f"pi_temp_alerter_throttled {1 if metrics.throttled else 0}")
+    lines.append("# HELP pimon_throttled Whether the Pi is throttled")
+    lines.append("# TYPE pimon_throttled gauge")
+    lines.append(f"pimon_throttled {1 if metrics.throttled else 0}")
 
     return Response("\n".join(lines) + "\n", mimetype="text/plain; charset=utf-8")
 

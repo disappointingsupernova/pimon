@@ -14,7 +14,7 @@ import socket
 import http.client
 from pathlib import Path
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _DOCKER_SOCKET = "/var/run/docker.sock"
 

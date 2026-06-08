@@ -13,7 +13,7 @@ import logging
 import urllib.request
 import urllib.error
 
-logger = logging.getLogger("pi_temp_alerter")
+logger = logging.getLogger("pimon")
 
 _HEALTH_URL = "http://127.0.0.1:8086/health"
 
