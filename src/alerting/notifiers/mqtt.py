@@ -151,12 +151,13 @@ def _now_iso() -> str:
 
 def _device_info() -> dict:
     """Return device metadata for Home Assistant discovery."""
+    from src import __version__
     return {
         "identifiers": [config.mqtt_client_id],
         "name": f"PiMon ({_hostname})",
         "manufacturer": "Raspberry Pi",
         "model": platform.machine(),
-        "sw_version": "1.0.0",
+        "sw_version": __version__,
         "configuration_url": f"http://{_hostname}:{config.dashboard_port}",
     }
 
