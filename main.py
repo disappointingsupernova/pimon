@@ -355,6 +355,105 @@ def _cmd_migrate_db(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def _cmd_doctor(_args: argparse.Namespace) -> None:
+    """Run diagnostic checks on sensors, SMTP, MQTT, DB, disk, and services."""
+    import shutil
+    import smtplib
+
+    from src.logger import setup_logging
+    setup_logging()
+
+    print("PiMon Doctor")
+    print("=" * 50)
+    passed = 0
+    failed = 0
+
+    def _check(name: str, ok: bool, detail: str = "") -> None:
+        nonlocal passed, failed
+        status = "PASS" if ok else "FAIL"
+        suffix = f" ({detail})" if detail else ""
+        print(f"  [{status}] {name}{suffix}")
+        if ok:
+            passed += 1
+        else:
+            failed += 1
+
+    # Sensors
+    print("\nSensors")
+    from src.sensors.manager import SensorManager
+    manager = SensorManager()
+    readings = manager.read_all()
+    if readings:
+        for r in readings:
+            _check(f"Sensor: {r.sensor_name}", r.available, r.error or f"{r.temperature_c:.1f} C")
+    else:
+        _check("Any sensor available", False, "no sensors detected")
+
+    # Database
+    print("\nDatabase")
+    if config.database_enabled:
+        try:
+            from src.database.models import init_db, get_session
+            init_db()
+            session = get_session()
+            session.close()
+            _check("Database connection", True, config.database_url.split("://")[0])
+        except Exception as exc:
+            _check("Database connection", False, str(exc))
+    else:
+        _check("Database enabled", False, "DATABASE_ENABLED=false")
+
+    # SMTP
+    print("\nSMTP")
+    if config.smtp_host and config.email_from:
+        try:
+            with smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=10) as server:
+                if config.smtp_use_tls:
+                    server.starttls()
+                if config.smtp_username and config.smtp_password:
+                    server.login(config.smtp_username, config.smtp_password)
+            _check("SMTP connection", True, f"{config.smtp_host}:{config.smtp_port}")
+        except Exception as exc:
+            _check("SMTP connection", False, str(exc))
+    else:
+        _check("SMTP configured", False, "SMTP_HOST or EMAIL_FROM not set")
+
+    # MQTT
+    print("\nMQTT")
+    if config.mqtt_enabled:
+        try:
+            from src.alerting.notifiers.mqtt import _get_client
+            client = _get_client()
+            _check("MQTT connection", client is not None, f"{config.mqtt_host}:{config.mqtt_port}")
+        except Exception as exc:
+            _check("MQTT connection", False, str(exc))
+    else:
+        _check("MQTT enabled", False, "MQTT_ENABLED=false")
+
+    # Disk
+    print("\nDisk")
+    try:
+        usage = shutil.disk_usage("/")
+        pct = (usage.used / usage.total) * 100
+        _check("Disk space", pct < 90, f"{pct:.1f}% used")
+    except OSError:
+        _check("Disk space", True, "unable to check")
+
+    # Writable directories
+    for d in ["logs", "data"]:
+        dir_path = Path(__file__).resolve().parent / d
+        if dir_path.exists():
+            import os as _os
+            _check(f"Directory writable: {d}/", _os.access(str(dir_path), _os.W_OK))
+        else:
+            _check(f"Directory exists: {d}/", False, "missing")
+
+    # Summary
+    print(f"\nResults: {passed} passed, {failed} failed")
+    if failed:
+        sys.exit(1)
+
+
 # =============================================================================
 # Helpers
 # =============================================================================
@@ -597,6 +696,19 @@ def main() -> None:
         help="Target database URL to migrate data into",
     )
 
+    # doctor
+    subparsers.add_parser(
+        "doctor",
+        help="Run diagnostic checks on all subsystems",
+        description=(
+            "Run a comprehensive health check of all PiMon subsystems:\n"
+            "sensors, SMTP, MQTT, database, disk space, and directories.\n"
+            "\n"
+            "Exits with code 1 if any check fails."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -612,6 +724,7 @@ def main() -> None:
         "config": _cmd_config,
         "update": _cmd_update,
         "migrate-db": _cmd_migrate_db,
+        "doctor": _cmd_doctor,
     }
     commands[args.command](args)
 
