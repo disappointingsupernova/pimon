@@ -18,7 +18,7 @@ A comprehensive Raspberry Pi system monitoring, alerting, and service statistics
 ## Quick Start
 
 ```bash
-git clone https://github.com/disapointingsupernova/Pi-Temperature-Alerter.git
+git clone https://github.com/disappointingsupernova/pimon
 cd pimon
 sudo ./install.sh
 sudo nano /opt/pimon/.env      # or wherever it installed
