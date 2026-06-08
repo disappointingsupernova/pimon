@@ -59,6 +59,11 @@ def _get_client():
     if config.mqtt_username:
         _client.username_pw_set(config.mqtt_username, config.mqtt_password)
 
+    # Enable TLS encryption if configured
+    if config.mqtt_tls:
+        import ssl
+        _client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS_CLIENT)
+
     # Last Will and Testament: broker publishes "offline" if we disconnect unexpectedly
     _client.will_set(
         _topic("status"),
