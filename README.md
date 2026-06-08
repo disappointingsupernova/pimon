@@ -2,38 +2,41 @@
 
 A comprehensive Raspberry Pi system monitoring, alerting, and service statistics platform. Monitors temperatures, system resources, and 19 auto-detected services with multi-channel alerting, Home Assistant MQTT integration, and a real-time web dashboard.
 
-## Features
+## What It Does
 
-- Multi-sensor support: CPU (thermal_zone), GPU (vcgencmd), DS18B20 (one-wire)
-- Tiered alerting: Warning, Critical, and Emergency thresholds with per-level recipients
-- Per-sensor threshold overrides for different acceptable ranges
-- Hysteresis: Prevents alert flapping when temperature oscillates around a threshold
-- Cooldown: Rate-limits repeated alerts to avoid inbox flooding
-- Recovery notifications: Alerts when temperature returns to normal
-- Rate-of-change alerting: Detects rapid temperature rises
-- Alert escalation timeout: Auto-escalates if stuck at a level too long
-- Multi-channel notifications: Email, Webhook, Telegram, Pushover, MQTT
-- HTML emails with colour-coded severity and dashboard links
-- Web dashboard: Real-time Chart.js graphs with auto-refresh and optional auth
-- Per-endpoint toggle: Individually enable/disable API, health, and metrics routes
-- Prometheus /metrics endpoint for Grafana integration
-- System metrics: CPU, memory, disk, swap, load averages, network I/O, uptime
-- 19 auto-detecting service collectors (ADS-B, DNS, VPN, media, containers, and more)
-- Home Assistant MQTT auto-discovery with LWT and remote commands
-- Multi-Pi aggregation via MQTT with hostname-tagged topics
-- Database persistence: SQLAlchemy with SQLite (default), MySQL, or PostgreSQL
-- Database migration tool for moving between backends
-- CSV logging with daily rotation and configurable retention
-- Daily digest email with min/max/average statistics
-- GPIO fan control with independent on/off thresholds
-- Systemd integration: Auto-start on boot with security hardening
-- Self-update: Pull latest changes, re-run installer, and restart via CLI
-- Low-write mode: Minimises SD card wear for 24/7 deployments
-- Dry-run mode: Test alert logic without sending notifications
-- Production deployment: Installs to /opt with dedicated service user
-- Startup configuration validation with clear error messages
-- Service auto-start detection with warning alert
-- Fully configurable via a single `.env` file
+**Install it. It works.** PiMon auto-detects what's running on your Pi and starts monitoring immediately.
+
+- Reads CPU/GPU temperature every 30 seconds
+- Sends you an email (or Telegram, Pushover, webhook) if it gets too hot
+- Publishes everything to MQTT with Home Assistant auto-discovery - entities just appear
+- Auto-detects 19 co-hosted services (ADS-B feeders, Pi-hole, Docker, WireGuard, etc.) and publishes their stats
+- Serves a real-time dashboard on port 5000 with historical charts
+- Exposes Prometheus metrics at `/metrics` for Grafana
+- Stores all data in SQLite (or MySQL/PostgreSQL if you prefer)
+- Designed for SD card longevity - batched writes, WAL mode, low-write option
+
+## Quick Start
+
+```bash
+git clone https://github.com/disapointingsupernova/Pi-Temperature-Alerter.git
+cd Pi-Temperature-Alerter
+sudo ./install.sh
+sudo nano /opt/pimon/.env      # or wherever it installed
+sudo systemctl start pimon
+```
+
+Then open `http://your-pi-ip:5000` in a browser.
+
+## CLI
+
+```bash
+pimon status          # Current sensor readings
+pimon history -n 50   # Last 50 temperature records
+pimon logs -f         # Follow live logs
+pimon config          # Show all settings (secrets redacted)
+pimon test-email      # Verify SMTP works
+sudo pimon update     # Pull latest + restart
+```
 
 ## Architecture
 
