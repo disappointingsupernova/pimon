@@ -103,8 +103,9 @@ class Monitor:
 
         # Publish MQTT online status for Home Assistant availability tracking
         if config.mqtt_enabled:
-            from src.alerting.notifiers.mqtt import publish_online
+            from src.alerting.notifiers.mqtt import publish_birth_message, publish_online
             publish_online()
+            publish_birth_message()
 
         while self._running:
             self._poll()

@@ -557,3 +557,54 @@ def publish_ha_discovery_for_collector(service_name: str, stats: dict) -> None:
                 device_class=device_class,
                 icon=icon or "mdi:information-outline",
             )
+
+
+def publish_birth_message() -> bool:
+    """Publish a birth message with system metadata on startup.
+
+    Includes OS version, Python version, PiMon version, IP address,
+    and system uptime for device identification in Home Assistant.
+    """
+    if not config.mqtt_enabled:
+        return False
+
+    client = _get_client()
+    if client is None:
+        return False
+
+    import sys as _sys
+
+    # Gather system information
+    try:
+        with open("/proc/uptime", "r") as f:
+            uptime_seconds = float(f.read().split()[0])
+    except (OSError, ValueError):
+        uptime_seconds = 0.0
+
+    try:
+        import subprocess as _sp
+        ip_result = _sp.run(
+            ["hostname", "-I"], capture_output=True, text=True, timeout=5
+        )
+        ip_addr = ip_result.stdout.strip().split()[0] if ip_result.returncode == 0 else "unknown"
+    except (OSError, IndexError):
+        ip_addr = "unknown"
+
+    from src import __version__
+
+    payload = json.dumps({
+        "hostname": _hostname,
+        "pimon_version": __version__,
+        "python_version": _sys.version.split()[0],
+        "os_version": platform.platform(),
+        "architecture": platform.machine(),
+        "ip_address": ip_addr,
+        "uptime_seconds": round(uptime_seconds, 1),
+        "timestamp": _now_iso(),
+    })
+
+    topic = _topic("birth")
+    result = client.publish(topic, payload, qos=1, retain=True)
+    if result.rc == 0:
+        logger.info("MQTT birth message published")
+    return result.rc == 0
