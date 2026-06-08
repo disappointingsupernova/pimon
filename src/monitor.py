@@ -314,30 +314,51 @@ class Monitor:
         if client is None:
             return
 
-        # fr24feed collector (auto-detect unless explicitly disabled)
-        if config.collector_fr24_enabled is not False:
-            from src.sensors.collectors.fr24feed import collect_fr24_stats
-            from src.alerting.notifiers.mqtt import publish_ha_discovery_for_fr24
-            stats = collect_fr24_stats()
-            if stats:
-                if not hasattr(self, '_fr24_detected'):
-                    logger.info("Auto-detected fr24feed service, publishing stats")
-                    self._fr24_detected = True
-                publish_ha_discovery_for_fr24()
-                stats["timestamp"] = _now_iso()
-                topic = _topic("service/fr24feed/state")
-                client.publish(topic, json.dumps(stats), qos=1, retain=True)
+        # Registry of all collectors: (config_attr, module_path, function_name, topic_suffix)
+        collectors = [
+            ("collector_fr24_enabled", "src.sensors.collectors.fr24feed", "collect_fr24_stats", "service/fr24feed/state"),
+            ("collector_readsb_enabled", "src.sensors.collectors.readsb", "collect_readsb_stats", "service/readsb/state"),
+            (None, "src.sensors.collectors.pihole", "collect_pihole_stats", "service/pihole/state"),
+            (None, "src.sensors.collectors.adguard", "collect_adguard_stats", "service/adguard/state"),
+            (None, "src.sensors.collectors.unbound", "collect_unbound_stats", "service/unbound/state"),
+            (None, "src.sensors.collectors.wireguard", "collect_wireguard_stats", "service/wireguard/state"),
+            (None, "src.sensors.collectors.tailscale", "collect_tailscale_stats", "service/tailscale/state"),
+            (None, "src.sensors.collectors.nginx", "collect_nginx_stats", "service/nginx/state"),
+            (None, "src.sensors.collectors.plex", "collect_plex_stats", "service/plex/state"),
+            (None, "src.sensors.collectors.jellyfin", "collect_jellyfin_stats", "service/jellyfin/state"),
+            (None, "src.sensors.collectors.zigbee2mqtt", "collect_zigbee2mqtt_stats", "service/zigbee2mqtt/state"),
+            (None, "src.sensors.collectors.influxdb", "collect_influxdb_stats", "service/influxdb/state"),
+            (None, "src.sensors.collectors.docker", "collect_docker_stats", "service/docker/state"),
+            (None, "src.sensors.collectors.dump1090", "collect_dump1090_stats", "service/dump1090/state"),
+            (None, "src.sensors.collectors.ups", "collect_ups_stats", "service/ups/state"),
+            (None, "src.sensors.collectors.smart", "collect_smart_stats", "service/smart/state"),
+            (None, "src.sensors.collectors.systemd", "collect_systemd_stats", "service/systemd/state"),
+        ]
 
-        # readsb collector (auto-detect unless explicitly disabled)
-        if config.collector_readsb_enabled is not False:
-            from src.sensors.collectors.readsb import collect_readsb_stats
-            from src.alerting.notifiers.mqtt import publish_ha_discovery_for_readsb
-            stats = collect_readsb_stats()
-            if stats:
-                if not hasattr(self, '_readsb_detected'):
-                    logger.info("Auto-detected readsb service, publishing stats")
-                    self._readsb_detected = True
-                publish_ha_discovery_for_readsb()
-                stats["timestamp"] = _now_iso()
-                topic = _topic("service/readsb/state")
-                client.publish(topic, json.dumps(stats), qos=1, retain=True)
+        for config_attr, module_path, func_name, topic_suffix in collectors:
+            # Check if explicitly disabled via config
+            if config_attr:
+                state = getattr(config, config_attr, None)
+                if state is False:
+                    continue
+
+            try:
+                import importlib
+                mod = importlib.import_module(module_path)
+                collect_fn = getattr(mod, func_name)
+                stats = collect_fn()
+
+                if stats:
+                    # Log first detection
+                    detection_key = f"_detected_{topic_suffix}"
+                    if not hasattr(self, detection_key):
+                        service_name = topic_suffix.split("/")[1]
+                        logger.info("Auto-detected %s service, publishing stats", service_name)
+                        setattr(self, detection_key, True)
+
+                    stats["timestamp"] = _now_iso()
+                    topic = _topic(topic_suffix)
+                    client.publish(topic, json.dumps(stats), qos=1, retain=True)
+            except Exception:
+                # Silently skip collectors that fail - they're optional
+                pass
