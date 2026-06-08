@@ -123,6 +123,17 @@ def init_db() -> None:
 
     if _engine is None:
         _engine = _get_engine()
+
+    # Migrate old database filename if it exists (from pre-rebrand)
+    if config.database_url.startswith("sqlite"):
+        from pathlib import Path
+        db_path = config.database_url.replace("sqlite:///", "")
+        old_path = Path(db_path).parent / "pi_temp_alerter.db"
+        new_path = Path(db_path)
+        if old_path.exists() and not new_path.exists():
+            old_path.rename(new_path)
+            logger.info("Migrated database file: %s -> %s", old_path.name, new_path.name)
+
     Base.metadata.create_all(_engine)
     logger.info("Database initialised: %s", _redact_url(config.database_url))
 
