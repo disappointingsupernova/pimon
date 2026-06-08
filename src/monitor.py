@@ -5,6 +5,7 @@ alerts with cooldown and hysteresis support.
 """
 
 import logging
+import os
 import signal
 import time
 from datetime import date, datetime, timezone
@@ -55,6 +56,9 @@ class Monitor:
         self._start_time = datetime.now(timezone.utc)
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
+
+        # Startup health check
+        self._startup_health_check()
 
         # Prune old CSV files on startup
         removed = prune_old_csv_files()
@@ -299,6 +303,61 @@ class Monitor:
         from src.alerting.digest import send_daily_digest
         logger.info("Sending daily digest")
         send_daily_digest()
+
+    def _startup_health_check(self) -> None:
+        """Run a system health check on startup and log the results.
+
+        Verifies that critical subsystems are operational before entering
+        the main poll loop. Logs warnings for any issues detected.
+        """
+        logger.info("Running startup health check...")
+        issues = []
+
+        # Check sensors are available
+        sensors = self._sensor_manager.sensors
+        if not sensors:
+            issues.append("No sensors available - nothing to monitor")
+
+        # Check database connectivity
+        if config.database_enabled:
+            try:
+                from src.database.models import get_session
+                session = get_session()
+                session.close()
+            except Exception as exc:
+                issues.append(f"Database connection failed: {exc}")
+
+        # Check MQTT connectivity
+        if config.mqtt_enabled:
+            from src.alerting.notifiers.mqtt import _get_client
+            client = _get_client()
+            if client is None:
+                issues.append("MQTT connection failed")
+
+        # Check disk space (warn if > 90% full)
+        try:
+            import shutil
+            usage = shutil.disk_usage("/")
+            disk_percent = (usage.used / usage.total) * 100
+            if disk_percent > 90:
+                issues.append(f"Disk usage critically high: {disk_percent:.1f}%")
+        except OSError:
+            pass
+
+        # Check writable directories
+        from pathlib import Path
+        for dir_name in ["logs", "data"]:
+            dir_path = Path(__file__).resolve().parent.parent / dir_name
+            if dir_path.exists() and not os.access(str(dir_path), os.W_OK):
+                issues.append(f"Directory not writable: {dir_path}")
+
+        # Report results
+        if issues:
+            for issue in issues:
+                logger.warning("Health check: %s", issue)
+            logger.warning("Startup health check completed with %d issue(s)", len(issues))
+        else:
+            logger.info("Startup health check passed")
 
     def _publish_collector_stats(self) -> None:
         """Publish external service collector stats to MQTT.
