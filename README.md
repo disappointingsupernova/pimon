@@ -1,6 +1,6 @@
 # PiMon
 
-A comprehensive Raspberry Pi temperature monitoring and alerting system. Monitors CPU, GPU, and external DS18B20 sensors with configurable email alerts, hysteresis-based threshold evaluation, and a real-time web dashboard.
+A comprehensive Raspberry Pi system monitoring, alerting, and service statistics platform. Monitors temperatures, system resources, and 19 auto-detected services with multi-channel alerting, Home Assistant MQTT integration, and a real-time web dashboard.
 
 ## Features
 
@@ -17,13 +17,18 @@ A comprehensive Raspberry Pi temperature monitoring and alerting system. Monitor
 - Web dashboard: Real-time Chart.js graphs with auto-refresh and optional auth
 - Per-endpoint toggle: Individually enable/disable API, health, and metrics routes
 - Prometheus /metrics endpoint for Grafana integration
-- System metrics: CPU, memory, disk usage, and throttle state
+- System metrics: CPU, memory, disk, swap, load averages, network I/O, uptime
+- 19 auto-detecting service collectors (ADS-B, DNS, VPN, media, containers, and more)
+- Home Assistant MQTT auto-discovery with LWT and remote commands
+- Multi-Pi aggregation via MQTT with hostname-tagged topics
 - Database persistence: SQLAlchemy with SQLite (default), MySQL, or PostgreSQL
+- Database migration tool for moving between backends
 - CSV logging with daily rotation and configurable retention
 - Daily digest email with min/max/average statistics
 - GPIO fan control with independent on/off thresholds
 - Systemd integration: Auto-start on boot with security hardening
-- Self-update: Pull latest changes and restart via CLI
+- Self-update: Pull latest changes, re-run installer, and restart via CLI
+- Low-write mode: Minimises SD card wear for 24/7 deployments
 - Dry-run mode: Test alert logic without sending notifications
 - Production deployment: Installs to /opt with dedicated service user
 - Startup configuration validation with clear error messages
@@ -49,8 +54,9 @@ graph TD
     B --> N[CSV Logger]
     B --> O[Fan Control]
     B --> P[Database Repository]
+    B --> U[Service Collectors]
+    U --> V[fr24feed / readsb / GPS / NTP / ...]
     A --> Q[Flask Dashboard]
-    Q --> C
     Q --> R[REST API]
     Q --> S[Prometheus /metrics]
     Q --> T[Health Check]
@@ -209,21 +215,23 @@ python main.py start
 | `start`       | Start the monitoring daemon                          | -                                |
 | `status`      | Show current sensor readings                         | -                                |
 | `history`     | Display recent temperature history                   | `-n`, `--lines` (default: 20)   |
+| `logs`        | View application log output                          | `-n`, `--lines` (default: 50), `-f`, `--follow` |
 | `test-email`  | Send a test email to verify SMTP config              | -                                |
 | `config`      | Display current configuration                        | -                                |
 | `update`      | Pull latest changes and restart service (requires root) | -                             |
+| `migrate-db`  | Migrate data between database backends               | `--source URL`, `--target URL` (required) |
 
 All commands are invoked via:
 
 ```bash
-python main.py <command> [options]
+pimon <command> [options]
 ```
 
 Use `--help` on any command for usage details:
 
 ```bash
-python main.py --help
-python main.py history --help
+pimon --help
+pimon history --help
 ```
 
 ## Configuration Reference
@@ -788,7 +796,7 @@ Payload:
 ## Project Structure
 
 ```
-Pi-Temperature-Alerter/
+PiMon/
 |-- main.py                  # CLI entry point
 |-- requirements.txt         # Python dependencies
 |-- install.sh               # Production installer (requires root)
@@ -798,7 +806,7 @@ Pi-Temperature-Alerter/
 |-- CONTRIBUTING.md          # Contribution guidelines
 |-- LICENCE                  # MIT licence
 |-- systemd/
-|   `-- pimon.service  # Systemd unit file
+|   `-- pimon.service        # Systemd unit file (reference template)
 `-- src/
     |-- config.py            # Configuration loader and validation
     |-- logger.py            # Logging and CSV setup with daily rotation
@@ -809,8 +817,28 @@ Pi-Temperature-Alerter/
     |   |-- gpu.py           # GPU temperature sensor
     |   |-- ds18b20.py       # DS18B20 one-wire sensor
     |   |-- manager.py       # Sensor orchestration
-    |   |-- system_metrics.py # CPU/memory/disk/throttle metrics
-    |   `-- fan_control.py   # GPIO fan control
+    |   |-- system_metrics.py # CPU/memory/disk/swap/load/network metrics
+    |   |-- fan_control.py   # GPIO fan control
+    |   `-- collectors/      # Auto-detecting service collectors
+    |       |-- fr24feed.py  # FlightRadar24 feed stats
+    |       |-- readsb.py    # readsb ADS-B decoder stats
+    |       |-- dump1090.py  # dump1090-fa stats
+    |       |-- pihole.py    # Pi-hole DNS stats
+    |       |-- adguard.py   # AdGuard Home stats
+    |       |-- unbound.py   # Unbound DNS resolver stats
+    |       |-- wireguard.py # WireGuard VPN stats
+    |       |-- tailscale.py # Tailscale mesh VPN stats
+    |       |-- nginx.py     # Nginx web server stats
+    |       |-- plex.py      # Plex Media Server stats
+    |       |-- jellyfin.py  # Jellyfin Media Server stats
+    |       |-- zigbee2mqtt.py # Zigbee2MQTT stats
+    |       |-- influxdb.py  # InfluxDB stats
+    |       |-- docker.py    # Docker container stats
+    |       |-- ups.py       # UPS (NUT) stats
+    |       |-- smart.py     # SMART disk health stats
+    |       |-- systemd.py   # Systemd service status
+    |       |-- ntp.py       # NTP/chrony synchronisation
+    |       `-- gps.py       # GPS (gpsd) fix and satellite info
     |-- alerting/
     |   |-- thresholds.py    # Threshold evaluation and hysteresis
     |   |-- email_sender.py  # SMTP email dispatch (plain + HTML)
@@ -820,10 +848,11 @@ Pi-Temperature-Alerter/
     |       |-- webhook.py   # Generic HTTP webhook
     |       |-- telegram.py  # Telegram Bot API
     |       |-- pushover.py  # Pushover push notifications
-    |       `-- mqtt.py      # MQTT publishing
+    |       `-- mqtt.py      # MQTT publishing + HA auto-discovery
     |-- database/
     |   |-- models.py        # SQLAlchemy models and engine setup
-    |   `-- repository.py    # Query and persistence helpers
+    |   |-- repository.py    # Query and persistence helpers
+    |   `-- migrate.py       # Database migration between backends
     `-- dashboard/
         |-- app.py           # Flask web application
         `-- templates/
