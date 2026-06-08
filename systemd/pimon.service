@@ -9,6 +9,7 @@ User=pimon
 Group=pimon
 WorkingDirectory=/opt/pimon
 ExecStart=/opt/pimon/venv/bin/python main.py start
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=10
 WatchdogSec=90
