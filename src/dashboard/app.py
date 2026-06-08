@@ -5,10 +5,11 @@ import hmac
 import logging
 import os
 import re
+import time as _time
 from collections import deque
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from threading import Thread
+from threading import Lock, Thread
 
 from flask import Flask, jsonify, render_template, request, Response
 
@@ -30,6 +31,12 @@ _start_time: datetime = datetime.now(timezone.utc)
 _last_poll_time: datetime | None = None
 # Cached latest readings from the monitor loop (updated every poll cycle)
 _latest_sensor_data: list[dict] = []
+
+# Rate limiting: token bucket per IP (max 60 requests, refills 1/sec)
+_RATE_LIMIT_MAX_TOKENS = 60
+_RATE_LIMIT_REFILL_RATE = 1.0  # tokens per second
+_rate_buckets: dict[str, tuple[float, float]] = {}  # ip -> (tokens, last_refill_time)
+_rate_lock = Lock()
 
 
 def init_dashboard(sensor_manager: SensorManager) -> None:
@@ -68,9 +75,33 @@ def _check_auth() -> Response | None:
     return None
 
 
+def _check_rate_limit() -> Response | None:
+    """Enforce token-bucket rate limiting per client IP.
+
+    Returns a 429 response if the client has exhausted their allowance.
+    """
+    ip = request.remote_addr or "unknown"
+    now = _time.monotonic()
+
+    with _rate_lock:
+        tokens, last_time = _rate_buckets.get(ip, (_RATE_LIMIT_MAX_TOKENS, now))
+        elapsed = now - last_time
+        tokens = min(_RATE_LIMIT_MAX_TOKENS, tokens + elapsed * _RATE_LIMIT_REFILL_RATE)
+
+        if tokens < 1.0:
+            _rate_buckets[ip] = (tokens, now)
+            return Response("Rate limit exceeded. Try again shortly.", 429)
+
+        _rate_buckets[ip] = (tokens - 1.0, now)
+    return None
+
+
 @app.before_request
 def before_request():
-    """Enforce authentication on all routes if enabled."""
+    """Enforce rate limiting and authentication on all routes."""
+    rate_resp = _check_rate_limit()
+    if rate_resp:
+        return rate_resp
     return _check_auth()
 
 
