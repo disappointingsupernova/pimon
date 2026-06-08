@@ -619,6 +619,106 @@ Subscribe to topics with MQTT-in nodes:
 
 Use the `hostname` field in payloads to route, filter, or aggregate data.
 
+## External Service Collectors
+
+The application can auto-detect and publish statistics from co-hosted services via MQTT. This is useful for ADS-B feeder Pis running FlightRadar24 and readsb.
+
+### Auto-Detection Behaviour
+
+Collectors use a tri-state configuration:
+
+| .env Setting | Behaviour |
+|---|---|
+| Not set (default) | Auto-detect: if the service is running and responds, publish its stats |
+| `true` | Force enabled: always attempt collection (errors logged if service not found) |
+| `false` | Explicitly disabled: never attempt collection even if service is present |
+
+On your ADS-B Pi, you do not need to configure anything. If fr24feed and readsb are running, their stats will be automatically detected and published.
+
+### Configuration
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| COLLECTOR_FR24_ENABLED | bool/unset | (auto) | FlightRadar24 feed stats collection |
+| COLLECTOR_READSB_ENABLED | bool/unset | (auto) | readsb ADS-B decoder stats collection |
+| COLLECTOR_READSB_STATS_DIR | string | /run/readsb | Path to readsb JSON stats directory |
+
+### FlightRadar24 (fr24feed)
+
+Collects from fr24feed's local HTTP monitor endpoint (`http://127.0.0.1:8754/monitor.json`), falling back to the `fr24feed-status` CLI command.
+
+MQTT topic: `pi-temp-alerter/<hostname>/service/fr24feed/state`
+
+Payload:
+```json
+{
+  "feed_connected": true,
+  "aircraft_tracked": 17,
+  "aircraft_uploaded": 15,
+  "receiver_connected": true,
+  "mlat_enabled": true,
+  "feed_connection_type": "MLAT+BEAST",
+  "build_version": "1.0.48",
+  "timestamp": "2026-06-08T21:30:00+00:00"
+}
+```
+
+Home Assistant entities auto-discovered:
+- FR24 Aircraft Tracked (sensor)
+- FR24 Aircraft Uploaded (sensor)
+- FR24 Feed Connected (binary sensor with connectivity device class)
+
+### readsb ADS-B Decoder
+
+Reads JSON statistics from readsb's run directory (`/run/readsb/stats.json` and `/run/readsb/aircraft.json`).
+
+MQTT topic: `pi-temp-alerter/<hostname>/service/readsb/state`
+
+Payload:
+```json
+{
+  "aircraft_total": 42,
+  "aircraft_with_position": 38,
+  "aircraft_with_mlat": 12,
+  "messages_rate": 234.5,
+  "messages_total": 1847293,
+  "signal_mean_dbfs": -3.2,
+  "signal_peak_dbfs": -0.8,
+  "noise_dbfs": -28.4,
+  "tracks_all": 156,
+  "local_clients": 3,
+  "remote_clients": 1,
+  "cpu_demod_ms": 12.3,
+  "cpu_reader_ms": 4.1,
+  "cpu_background_ms": 2.0,
+  "timestamp": "2026-06-08T21:30:00+00:00"
+}
+```
+
+Home Assistant entities auto-discovered:
+- ADS-B Aircraft Total (sensor)
+- ADS-B Aircraft With Position (sensor)
+- ADS-B Aircraft MLAT (sensor)
+- ADS-B Message Rate (sensor, msg/s)
+- ADS-B Messages Total (sensor)
+- ADS-B Signal Mean (sensor, dBFS)
+- ADS-B Signal Peak (sensor, dBFS)
+- ADS-B Noise Floor (sensor, dBFS)
+- ADS-B Tracks (sensor)
+- ADS-B Local Clients (sensor)
+
+### Disabling Auto-Detection
+
+To prevent a collector from running even when the service is present:
+
+```bash
+# Disable fr24feed stats (service still runs, just not monitored)
+COLLECTOR_FR24_ENABLED=false
+
+# Disable readsb stats
+COLLECTOR_READSB_ENABLED=false
+```
+
 ## Project Structure
 
 ```
