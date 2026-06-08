@@ -16,6 +16,12 @@ from flask import Flask, jsonify, render_template, request, Response
 from src.config import config
 from src.sensors.manager import SensorManager
 
+try:
+    from flask_socketio import SocketIO
+    _socketio_available = True
+except ImportError:
+    _socketio_available = False
+
 logger = logging.getLogger("pimon")
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
@@ -23,6 +29,11 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 app = Flask(__name__, template_folder=str(_TEMPLATE_DIR))
 app.config["SECRET_KEY"] = os.urandom(32)
+
+# WebSocket support via flask-socketio
+socketio: SocketIO | None = None
+if _socketio_available:
+    socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
 
 # In-memory buffer for recent readings (last 100 per sensor)
 _recent_readings: dict[str, deque] = {}
@@ -122,9 +133,12 @@ def update_latest_readings(readings: list[dict]) -> None:
 
     Called by the monitor after each poll cycle so dashboard endpoints
     serve cached data rather than triggering fresh subprocess reads.
+    Emits data via WebSocket if clients are connected.
     """
     global _latest_sensor_data
     _latest_sensor_data = readings
+    if socketio is not None:
+        socketio.emit("sensor_update", {"readings": readings}, namespace="/")
 
 
 @app.route("/")
@@ -315,23 +329,32 @@ def start_dashboard() -> Thread | None:
         )
 
     # Suppress Flask's development server warning banner in logs
-    # Set the werkzeug logger to ERROR level to hide the startup warning
-    # while still allowing the server to bind and run normally
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-    thread = Thread(
-        target=lambda: app.run(
-            host=config.dashboard_host,
-            port=config.dashboard_port,
-            debug=False,
-            use_reloader=False,
-        ),
-        daemon=True,
-    )
+    def _run_server() -> None:
+        if socketio is not None:
+            socketio.run(
+                app,
+                host=config.dashboard_host,
+                port=config.dashboard_port,
+                debug=False,
+                use_reloader=False,
+                allow_unsafe_werkzeug=True,
+            )
+        else:
+            app.run(
+                host=config.dashboard_host,
+                port=config.dashboard_port,
+                debug=False,
+                use_reloader=False,
+            )
+
+    thread = Thread(target=_run_server, daemon=True)
     thread.start()
     logger.info(
-        "Dashboard running at http://%s:%d",
+        "Dashboard running at http://%s:%d%s",
         config.dashboard_host,
         config.dashboard_port,
+        " (WebSocket enabled)" if socketio else "",
     )
     return thread

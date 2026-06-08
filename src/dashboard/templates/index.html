@@ -6,6 +6,7 @@
     <title>PiMon - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -323,7 +324,19 @@
         pollCurrent();
         loadHistoricalData(currentHours);
 
-        // Refresh current data every 5s, historical chart every 60s
+        // WebSocket for instant push updates
+        try {
+            const socket = io();
+            socket.on('sensor_update', (data) => {
+                if (data.readings) updateSensorCards(data.readings);
+                document.getElementById('last-updated').textContent =
+                    'Last updated: ' + new Date().toLocaleString() + ' (live)';
+            });
+        } catch (e) {
+            // Fall back to polling if WebSocket unavailable
+        }
+
+        // Refresh current data every 5s (fallback), historical chart every 60s
         setInterval(pollCurrent, 5000);
         setInterval(() => loadHistoricalData(currentHours), 60000);
     </script>
