@@ -524,15 +524,26 @@ def _cmd_doctor(args: argparse.Namespace) -> None:
     if test_dir.exists():
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=no", "--no-header"],
+                [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=short", "--no-header"],
                 capture_output=True,
                 text=True,
                 timeout=120,
                 cwd=str(Path(__file__).resolve().parent),
             )
-            # Parse output for pass/fail counts
-            last_line = result.stdout.strip().split("\n")[-1] if result.stdout.strip() else ""
-            _check("Test suite", result.returncode == 0, last_line)
+            # Parse output for pass/fail summary (last line)
+            output_lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
+            summary_line = output_lines[-1] if output_lines else "no output"
+            _check("Test suite", result.returncode == 0, summary_line)
+
+            # If tests failed, print the failure details
+            if result.returncode != 0 and output_lines:
+                print("\n  Test failures:")
+                in_failures = False
+                for line in output_lines:
+                    if "FAILURES" in line or "FAILED" in line or line.startswith("E "):
+                        in_failures = True
+                    if in_failures:
+                        print(f"    {line}")
         except subprocess.TimeoutExpired:
             _check("Test suite", False, "timed out after 120s")
         except (OSError, FileNotFoundError):
