@@ -269,6 +269,7 @@ class Monitor:
 
         state = self._evaluator.get_state(reading.sensor_name)
         state.record_alert(level)
+        self._persist_alert_state(reading.sensor_name)
 
     def _handle_recovery(self, reading: SensorReading, previous_level: AlertLevel) -> None:
         """Dispatch recovery notification via all enabled channels."""
@@ -280,6 +281,24 @@ class Monitor:
         )
         dispatch_recovery(
             reading.sensor_name, reading.temperature_c, previous_level
+        )
+        self._persist_alert_state(reading.sensor_name)
+
+    def _persist_alert_state(self, sensor_name: str) -> None:
+        """Save the current alert state for a sensor to the database."""
+        if not config.database_enabled:
+            return
+        state = self._evaluator.get_state(sensor_name)
+        last_times = {
+            lvl.name: ts
+            for lvl, ts in state.last_alert_times.items()
+        }
+        from src.database.repository import save_alert_state
+        save_alert_state(
+            sensor_name,
+            state.current_level.name,
+            state.level_entered_at,
+            last_times,
         )
 
     def get_latest_readings(self) -> list[SensorReading]:

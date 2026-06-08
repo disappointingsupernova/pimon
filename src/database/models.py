@@ -193,3 +193,17 @@ class SystemMetricRecord(Base):
 
     def __repr__(self) -> str:
         return f"<SystemMetricRecord(cpu={self.cpu_percent}, mem={self.memory_percent})>"
+
+
+class AlertStateRecord(Base):
+    """Persisted alert state for deduplication across restarts."""
+
+    __tablename__ = "alert_state"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sensor_name = Column(String(100), nullable=False, unique=True, index=True)
+    current_level = Column(String(20), nullable=False, default="NORMAL")
+    level_entered_at = Column(DateTime, nullable=True)
+    last_alert_warning = Column(DateTime, nullable=True)
+    last_alert_critical = Column(DateTime, nullable=True)
+    last_alert_emergency = Column(DateTime, nullable=True)

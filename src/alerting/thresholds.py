@@ -53,6 +53,26 @@ class ThresholdEvaluator:
 
     def __init__(self) -> None:
         self._states: dict[str, AlertState] = {}
+        self._restore_persisted_state()
+
+    def _restore_persisted_state(self) -> None:
+        """Restore alert states from database for deduplication across restarts."""
+        if not config.database_enabled:
+            return
+
+        try:
+            from src.database.repository import load_alert_states
+            for record in load_alert_states():
+                level = AlertLevel[record["current_level"]]
+                state = AlertState(sensor_name=record["sensor_name"])
+                state.current_level = level
+                state.level_entered_at = record["level_entered_at"]
+                for level_name, ts in record["last_alert_times"].items():
+                    if ts is not None:
+                        state.last_alert_times[AlertLevel[level_name]] = ts
+                self._states[record["sensor_name"]] = state
+        except Exception:
+            pass  # Non-fatal: fresh state if DB unavailable
 
     def _get_state(self, sensor_name: str) -> AlertState:
         if sensor_name not in self._states:

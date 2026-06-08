@@ -244,3 +244,72 @@ def prune_old_records(retention_days: int) -> int:
         return 0
     finally:
         session.close()
+
+
+# ============================================================================
+# Alert state persistence (deduplication across restarts)
+# ============================================================================
+
+def save_alert_state(
+    sensor_name: str,
+    current_level: str,
+    level_entered_at: datetime | None,
+    last_alert_times: dict[str, datetime | None],
+) -> None:
+    """Persist the current alert state for a sensor to the database."""
+    from src.database.models import AlertStateRecord
+
+    session = get_session()
+    try:
+        record = (
+            session.query(AlertStateRecord)
+            .filter(AlertStateRecord.sensor_name == sensor_name)
+            .first()
+        )
+        if record is None:
+            record = AlertStateRecord(sensor_name=sensor_name)
+            session.add(record)
+
+        record.current_level = current_level
+        record.level_entered_at = level_entered_at
+        record.last_alert_warning = last_alert_times.get("WARNING")
+        record.last_alert_critical = last_alert_times.get("CRITICAL")
+        record.last_alert_emergency = last_alert_times.get("EMERGENCY")
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.error("Failed to save alert state: %s", exc)
+    finally:
+        session.close()
+
+
+def load_alert_states() -> list[dict]:
+    """Load all persisted alert states from the database.
+
+    Returns a list of dicts with keys: sensor_name, current_level,
+    level_entered_at, last_alert_times.
+    """
+    from src.database.models import AlertStateRecord
+
+    session = get_session()
+    try:
+        records = session.query(AlertStateRecord).all()
+        results = []
+        for r in records:
+            last_times: dict[str, datetime | None] = {
+                "WARNING": r.last_alert_warning,
+                "CRITICAL": r.last_alert_critical,
+                "EMERGENCY": r.last_alert_emergency,
+            }
+            results.append({
+                "sensor_name": r.sensor_name,
+                "current_level": r.current_level,
+                "level_entered_at": r.level_entered_at,
+                "last_alert_times": last_times,
+            })
+        return results
+    except Exception as exc:
+        logger.error("Failed to load alert states: %s", exc)
+        return []
+    finally:
+        session.close()
