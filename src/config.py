@@ -14,6 +14,15 @@ _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_ENV_PATH)
 
 
+def reload_env() -> None:
+    """Reload environment variables from .env file.
+
+    Clears existing dotenv values and re-reads the file so that
+    a new Config instance picks up changed values.
+    """
+    load_dotenv(_ENV_PATH, override=True)
+
+
 def _bool(value: str | None) -> bool:
     if value is None:
         return False

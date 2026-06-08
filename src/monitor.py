@@ -58,6 +58,10 @@ class Monitor:
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
 
+        # SIGHUP triggers config hot-reload (Unix only)
+        if hasattr(signal, "SIGHUP"):
+            signal.signal(signal.SIGHUP, self._handle_sighup)
+
         # Initialise systemd watchdog
         init_watchdog()
 
@@ -132,6 +136,23 @@ class Monitor:
     def _handle_signal(self, signum: int, _frame) -> None:
         logger.info("Received signal %d, shutting down gracefully", signum)
         self.stop()
+
+    def _handle_sighup(self, _signum: int, _frame) -> None:
+        """Reload configuration from .env without restarting the service."""
+        logger.info("Received SIGHUP, reloading configuration...")
+        from src.config import Config, reload_env
+        import src.config as config_module
+
+        reload_env()
+        config_module.config = Config()
+
+        errors = config_module.config.validate()
+        if errors:
+            for err in errors:
+                logger.error("Config reload error: %s", err)
+            logger.error("Configuration invalid after reload, some values may be stale")
+        else:
+            logger.info("Configuration reloaded successfully")
 
     def _poll(self) -> None:
         """Perform a single polling cycle across all sensors.
