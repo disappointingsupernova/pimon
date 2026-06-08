@@ -138,6 +138,11 @@ class Config:
         self.fan_on_threshold: float = _float(os.getenv("FAN_ON_THRESHOLD"), 55.0)
         self.fan_off_threshold: float = _float(os.getenv("FAN_OFF_THRESHOLD"), 45.0)
 
+        # External service collectors
+        self.collector_fr24_enabled: bool = _bool(os.getenv("COLLECTOR_FR24_ENABLED", "false"))
+        self.collector_readsb_enabled: bool = _bool(os.getenv("COLLECTOR_READSB_ENABLED", "false"))
+        self.collector_readsb_stats_dir: str = os.getenv("COLLECTOR_READSB_STATS_DIR", "/run/readsb")
+
         # Per-sensor threshold overrides (populated dynamically)
         self.sensor_overrides: dict[str, dict[str, float]] = self._load_sensor_overrides()
 

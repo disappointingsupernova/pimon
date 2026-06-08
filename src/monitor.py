@@ -174,6 +174,9 @@ class Monitor:
                 from src.sensors.system_metrics import collect_full_metrics
                 publish_system_metrics(collect_full_metrics())
 
+                # Publish external service collector stats
+                self._publish_collector_stats()
+
         # Update cached data for dashboard API endpoints
         update_latest_readings([
             {
@@ -296,3 +299,34 @@ class Monitor:
         from src.alerting.digest import send_daily_digest
         logger.info("Sending daily digest")
         send_daily_digest()
+
+    def _publish_collector_stats(self) -> None:
+        """Publish external service collector stats to MQTT."""
+        from src.alerting.notifiers.mqtt import _get_client, _topic, _now_iso
+        import json
+
+        client = _get_client()
+        if client is None:
+            return
+
+        # fr24feed collector
+        if config.collector_fr24_enabled:
+            from src.sensors.collectors.fr24feed import collect_fr24_stats
+            from src.alerting.notifiers.mqtt import publish_ha_discovery_for_fr24
+            stats = collect_fr24_stats()
+            if stats:
+                publish_ha_discovery_for_fr24()
+                stats["timestamp"] = _now_iso()
+                topic = _topic("service/fr24feed/state")
+                client.publish(topic, json.dumps(stats), qos=1, retain=True)
+
+        # readsb collector
+        if config.collector_readsb_enabled:
+            from src.sensors.collectors.readsb import collect_readsb_stats
+            from src.alerting.notifiers.mqtt import publish_ha_discovery_for_readsb
+            stats = collect_readsb_stats()
+            if stats:
+                publish_ha_discovery_for_readsb()
+                stats["timestamp"] = _now_iso()
+                topic = _topic("service/readsb/state")
+                client.publish(topic, json.dumps(stats), qos=1, retain=True)

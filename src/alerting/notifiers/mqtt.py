@@ -405,3 +405,65 @@ def publish_online() -> bool:
     topic = _topic("status")
     result = client.publish(topic, "online", qos=1, retain=True)
     return result.rc == 0
+
+
+def publish_ha_discovery_for_fr24() -> None:
+    """Register fr24feed metrics with Home Assistant auto-discovery."""
+    state_topic = _topic("service/fr24feed/state")
+
+    sensors = [
+        ("fr24_aircraft_tracked", "FR24 Aircraft Tracked", "", "{{ value_json.aircraft_tracked }}", None, "mdi:airplane"),
+        ("fr24_aircraft_uploaded", "FR24 Aircraft Uploaded", "", "{{ value_json.aircraft_uploaded }}", None, "mdi:upload"),
+    ]
+
+    for sensor_id, name, unit, template, device_class, icon in sensors:
+        _send_ha_discovery(
+            sensor_id=sensor_id,
+            name=name,
+            unit=unit,
+            state_topic=state_topic,
+            value_template=template,
+            device_class=device_class,
+            icon=icon,
+        )
+
+    # Binary sensor for feed connection status
+    _send_ha_discovery(
+        sensor_id="fr24_feed_connected",
+        name="FR24 Feed Connected",
+        unit="",
+        state_topic=state_topic,
+        value_template="{{ value_json.feed_connected }}",
+        device_class="connectivity",
+        icon="mdi:access-point-network",
+        component="binary_sensor",
+    )
+
+
+def publish_ha_discovery_for_readsb() -> None:
+    """Register readsb metrics with Home Assistant auto-discovery."""
+    state_topic = _topic("service/readsb/state")
+
+    sensors = [
+        ("readsb_aircraft_total", "ADS-B Aircraft Total", "", "{{ value_json.aircraft_total }}", None, "mdi:airplane"),
+        ("readsb_aircraft_with_pos", "ADS-B Aircraft With Position", "", "{{ value_json.aircraft_with_position }}", None, "mdi:map-marker"),
+        ("readsb_aircraft_mlat", "ADS-B Aircraft MLAT", "", "{{ value_json.aircraft_with_mlat }}", None, "mdi:satellite-variant"),
+        ("readsb_messages_rate", "ADS-B Message Rate", "msg/s", "{{ value_json.messages_rate }}", None, "mdi:message-fast"),
+        ("readsb_messages_total", "ADS-B Messages Total", "", "{{ value_json.messages_total }}", None, "mdi:counter"),
+        ("readsb_signal_mean", "ADS-B Signal Mean", "dBFS", "{{ value_json.signal_mean_dbfs }}", "signal_strength", "mdi:signal"),
+        ("readsb_signal_peak", "ADS-B Signal Peak", "dBFS", "{{ value_json.signal_peak_dbfs }}", "signal_strength", "mdi:signal"),
+        ("readsb_noise", "ADS-B Noise Floor", "dBFS", "{{ value_json.noise_dbfs }}", None, "mdi:waveform"),
+        ("readsb_tracks", "ADS-B Tracks", "", "{{ value_json.tracks_all }}", None, "mdi:radar"),
+        ("readsb_local_clients", "ADS-B Local Clients", "", "{{ value_json.local_clients }}", None, "mdi:lan-connect"),
+    ]
+
+    for sensor_id, name, unit, template, device_class, icon in sensors:
+        _send_ha_discovery(
+            sensor_id=sensor_id,
+            name=name,
+            unit=unit,
+            state_topic=state_topic,
+            value_template=template,
+            device_class=device_class,
+            icon=icon,
+        )
